@@ -1,0 +1,1027 @@
+/* ============================================================
+   法定相続情報一覧図 作成システム - スタイルシート
+   ------------------------------------------------------------
+   色はすべてCSSカスタムプロパティ（変数）経由で参照する。
+   :root がライトモードの既定値、[data-theme="dark"] がその
+   上書き値。テーマ切替は js/theme.js が <html> の data-theme
+   属性を書き換えることで行う（本CSSはそれを購読するだけ）。
+
+   ただし「用紙」(.paper / SVGの一覧図そのもの)は実際に印刷
+   される紙面を表すため、テーマに関わらず常に白のまま固定する。
+   ============================================================ */
+
+:root {
+  --bg-page: #f1f5f9;
+  --bg-card: #ffffff;
+  --bg-section: #fafbfc;
+  --border-color: #cbd5e1;
+  --border-color-strong: #94a3b8;
+  --text-primary: #1e293b;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --text-faint: #94a3b8;
+
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-bg-hover: #eff6ff;
+  --success: #10b981;
+  --success-hover: #059669;
+  --danger: #ef4444;
+  --danger-hover: #dc2626;
+
+  --badge-applicant-bg: #fef3c7;
+  --badge-applicant-fg: #b45309;
+  --badge-deceased-bg: #fee2e2;
+  --badge-deceased-fg: #dc2626;
+  --badge-adopted-bg: #e0e7ff;
+  --badge-adopted-fg: #4f46e5;
+  --badge-illegitimate-bg: #d1fae5;
+  --badge-illegitimate-fg: #059669;
+
+  --sub-card-bg: #fef3c7;
+  --sub-card-border: #f59e0b;
+
+  --shadow-view: 0 4px 6px rgba(0,0,0,0.1);
+  --shadow-paper: 0 10px 25px rgba(0,0,0,0.1);
+
+  /* 一覧図(SVG)側のテキスト色。用紙は常に白背景なので、
+     テーマに関わらずここは濃色のまま固定してよい。 */
+  --svg-title: #1e293b;
+  --svg-label: #475569;
+  --svg-name: #0f172a;
+  --svg-info: #64748b;
+  --svg-info-addr: #64748b;
+  --svg-frame-stroke: #e2e8f0;
+  --svg-infocard-bg: #f8fafc;
+  --svg-infocard-border: #cbd5e1;
+  --svg-link-stroke: #334155;
+}
+
+[data-theme="dark"] {
+  --bg-page: #0f172a;
+  --bg-card: #1e2536;
+  --bg-section: #1a2233;
+  --border-color: #475569;
+  --border-color-strong: #64748b;
+  --text-primary: #f1f5f9;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-faint: #64748b;
+
+  --accent: #3b82f6;
+  --accent-hover: #60a5fa;
+  --accent-bg-hover: #1e2b45;
+  --success: #10b981;
+  --success-hover: #34d399;
+  --danger: #f87171;
+  --danger-hover: #fca5a5;
+
+  --badge-applicant-bg: #4a3a15;
+  --badge-applicant-fg: #fbbf24;
+  --badge-deceased-bg: #4a1f1f;
+  --badge-deceased-fg: #f87171;
+  --badge-adopted-bg: #2a2a52;
+  --badge-adopted-fg: #a5b4fc;
+  --badge-illegitimate-bg: #113a2d;
+  --badge-illegitimate-fg: #34d399;
+
+  --sub-card-bg: #3a2f14;
+  --sub-card-border: #b45309;
+
+  --shadow-view: 0 4px 10px rgba(0,0,0,0.4);
+  --shadow-paper: 0 10px 25px rgba(0,0,0,0.5);
+
+  /* 一覧図(SVG)は実際の紙面を表すため、ダークモードでも
+     常に白背景・濃色文字のまま変更しない。 */
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: "Yu Gothic", "Meiryo", "Hiragino Kaku Gothic ProN", sans-serif;
+  color: var(--text-primary);
+  background: var(--bg-page);
+  padding: 20px;
+  min-height: 100vh;
+  transition: background-color 0.2s ease;
+}
+h1 {
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 20px;
+  color: var(--text-primary);
+}
+h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: var(--text-primary);
+  border-bottom: 2px solid var(--border-color);
+  padding-bottom: 8px;
+}
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+}
+.top-bar {
+  max-width: 900px;
+  margin: 0 auto 8px;
+  display: flex;
+  justify-content: flex-end;
+}
+.theme-toggle-btn {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--border-color-strong);
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.theme-toggle-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.view {
+  background: var(--bg-card);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: var(--shadow-view);
+}
+.section {
+  margin-bottom: 16px;
+  padding: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-section);
+}
+/* 相続順位により入力が不要（入力できない）セクションの表示。
+   一般の利用者が誤って下位順位の相続人を入力してしまうのを防ぐため、
+   入力欄そのものを出さず、理由だけを淡い表示で示す。 */
+/* 相続関係説明図にのみ反映される入力欄。法定相続情報一覧図には
+   記載できない情報（相続放棄の有無、遺産分割の結果など）であることを
+   視覚的に区別する。 */
+.setsumeizu-only {
+  border-left: 3px solid var(--sub-card-border);
+  padding-left: 8px;
+  margin-top: 8px;
+}
+.blocked-section {
+  opacity: 0.75;
+  border-style: dashed;
+}
+.blocked-section .section-title {
+  color: var(--text-muted);
+}
+.section-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  color: var(--accent);
+}
+.form-group {
+  margin-bottom: 8px;
+}
+.form-group label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 3px;
+  color: var(--text-secondary);
+}
+.form-group input, .form-group select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color-strong);
+  border-radius: 5px;
+  font-size: 12px;
+  font-family: inherit;
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+.form-row {
+  display: flex;
+  gap: 8px;
+}
+.form-row .form-group {
+  flex: 1;
+}
+.checkbox-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.checkbox-group input[type="checkbox"] {
+  width: auto;
+}
+.btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+.btn-primary {
+  background: var(--accent);
+  color: white;
+}
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+.btn-success {
+  background: var(--success);
+  color: white;
+}
+.btn-success:hover {
+  background: var(--success-hover);
+}
+.btn-danger {
+  background: var(--danger);
+  color: white;
+  padding: 3px 8px;
+  font-size: 10px;
+}
+.btn-danger:hover {
+  background: var(--danger-hover);
+}
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+.btn-outline {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+.btn-outline:hover {
+  background: var(--accent-bg-hover);
+}
+.btn-large {
+  padding: 12px 24px;
+  font-size: 15px;
+}
+.toolbar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.person-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.person-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color-strong);
+  border-radius: 6px;
+  padding: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.person-item:hover {
+  border-color: var(--accent);
+  background: var(--accent-bg-hover);
+}
+.person-item.expanded {
+  border-color: var(--accent);
+  background: var(--accent-bg-hover);
+  cursor: default;
+}
+.person-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.person-item-info {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.person-item-role {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.person-item-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.person-item-badges {
+  display: flex;
+  gap: 4px;
+}
+.badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+.badge-applicant {
+  background: var(--badge-applicant-bg);
+  color: var(--badge-applicant-fg);
+}
+.badge-deceased {
+  background: var(--badge-deceased-bg);
+  color: var(--badge-deceased-fg);
+}
+.badge-adopted {
+  background: var(--badge-adopted-bg);
+  color: var(--badge-adopted-fg);
+}
+.badge-illegitimate {
+  background: var(--badge-illegitimate-bg);
+  color: var(--badge-illegitimate-fg);
+}
+.person-detail {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border-color-strong);
+}
+.sub-card {
+  background: var(--sub-card-bg);
+  border: 1px dashed var(--sub-card-border);
+  border-radius: 6px;
+  padding: 8px;
+  margin-top: 8px;
+  margin-left: 16px;
+}
+.sub-card-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--badge-applicant-fg);
+  margin-bottom: 6px;
+}
+.sub-item {
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  background: var(--bg-card);
+  border-left: 3px solid var(--sub-card-border);
+  border-radius: 4px;
+}
+.sub-item:last-child {
+  margin-bottom: 0;
+}
+.sub-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+.sub-item-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* 用紙(.paper)は実際の印刷面を表すため、常に白背景・固定サイズ
+   (A4相当)のままにする。ダークモードでも変化させない。代襲相続で
+   世代が増えて一覧図が横に広がっても、SVGのviewBoxが内容を
+   自動的に縮小表示するため、用紙サイズ自体は変える必要がない。 */
+.paper {
+  width: 794px;
+  height: 1123px;
+  background: #ffffff;
+  box-shadow: var(--shadow-paper);
+  padding: 40px 50px 190px 50px;
+  margin: 0 auto;
+}
+/* 申出書・委任状（HTMLの文書）用。SVGの一覧図と違い、通常のHTML
+   フローで組むため、高さは内容に応じて自動、文字色も用紙が常に
+   白背景であることに合わせて明示的に濃色を指定する
+   （ダークモードの文字色をそのまま継承すると白地で見えなくなるため）。*/
+.doc-paper {
+  /* 書類の文字の大きさの倍率。内容が少なくて余白が大きい書類は、JavaScriptが、1ページに収まる範囲で
+     文字を少し大きくする（最大1.3倍）。余白（上下左右）は、多めに確保する */
+  --doc-scale: 1;
+  height: auto;
+  min-height: 1000px;
+  padding: 64px 72px;
+  font-size: calc(13px * var(--doc-scale));
+  line-height: 1.75;
+  color: #1a1a1a;
+  text-align: left;
+}
+.doc-title {
+  text-align: center;
+  font-size: calc(16px * var(--doc-scale));
+  font-weight: 700;
+  margin-bottom: calc(8px * var(--doc-scale));
+}
+.doc-subtitle {
+  text-align: right;
+  font-size: calc(11px * var(--doc-scale));
+  margin-bottom: calc(16px * var(--doc-scale));
+}
+.moshidesho-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: calc(20px * var(--doc-scale));
+}
+.moshidesho-table th,
+.moshidesho-table td {
+  border: 1px solid #333;
+  padding: calc(8px * var(--doc-scale)) calc(10px * var(--doc-scale));
+  font-size: calc(12px * var(--doc-scale));
+  vertical-align: top;
+  text-align: left;
+}
+.moshidesho-table th {
+  width: calc(140px * var(--doc-scale));
+  background: #f5f5f5;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.doc-note {
+  font-size: calc(11.5px * var(--doc-scale));
+  line-height: 1.8;
+  margin-bottom: calc(20px * var(--doc-scale));
+}
+.doc-office {
+  text-align: right;
+  font-size: calc(13px * var(--doc-scale));
+}
+.ininjo-block {
+  margin: calc(24px * var(--doc-scale)) 0;
+}
+.ininjo-block-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+  border-bottom: 1px solid #333;
+  display: inline-block;
+  padding-bottom: 2px;
+}
+svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.preview-container {
+  overflow: auto;
+  max-height: calc(100vh - 200px);
+}
+.empty-state {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-faint);
+  font-size: 13px;
+}
+@media print {
+  body { background: white; padding: 0; }
+  .top-bar, .toolbar, .nav-bar, .modal-backdrop, .no-print { display: none !important; }
+  h1, h2 { display: none !important; }
+  .view { box-shadow: none; padding: 0; }
+  .preview-container { max-height: none; overflow: visible; }
+  .paper { box-shadow: none; margin: 0 auto; }
+  /* 画面上は現在のページのみ表示しているが（v-show）、印刷時は
+     複数ページとも印刷されるよう、非表示にしていたページも
+     表示に戻し、ページごとに改ページする。 */
+  .print-page { display: block !important; }
+  .print-page:not(:last-child) { page-break-after: always; }
+}
+
+/* ------------------------------------------------------------
+   SVG図面描画用クラス
+   ------------------------------------------------------------
+   法務局の実際の記載例では、各人物の氏名・住所等は枠線で囲まれて
+   いない（文字のみ）。そのため人物ボックスの矩形（node-rect）は
+   レイアウト計算上の座標の目安として描画されているだけで、
+   見た目の線・塗りはここで透明にしている。
+   関係線（婚姻線・血族線）と文字だけが実際に表示される。
+------------------------------------------------------------- */
+.node-rect {
+  fill: none;
+  stroke: none;
+}
+.link {
+  stroke: var(--svg-link-stroke);
+  stroke-width: 1.2;
+  fill: none;
+}
+.link.half {
+  stroke-dasharray: 4,3;
+}
+.link.spouse {
+  stroke: var(--svg-link-stroke);
+  stroke-width: 1.2;
+}
+.text-doctitle {
+  font-size: 18px;
+  font-weight: 700;
+  fill: var(--svg-title);
+}
+.text-title {
+  font-size: 12px;
+  font-weight: 700;
+  fill: var(--svg-title);
+}
+.text-label {
+  font-size: 11px;
+  fill: var(--svg-label);
+}
+.text-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  fill: var(--svg-name);
+}
+.text-info {
+  font-size: 10px;
+  fill: var(--svg-info);
+}
+.text-info.addr {
+  font-size: 9.5px;
+  fill: var(--svg-info-addr);
+}
+/* 相続関係説明図専用の相続状況の注記（相続放棄、遺産分割により
+   取得せず等）。法定相続情報一覧図では使用されない。 */
+/* 相続関係説明図の〔相続人〕〔相続しない〕表示。
+   この登記で相続する人（successor）は濃い色で強調し、
+   相続しない人は淡い色にして一目で区別できるようにする。 */
+.text-info.note {
+  font-size: 9.5px;
+  font-weight: 700;
+  fill: #94a3b8;
+}
+.text-info.note.successor {
+  fill: #b45309;
+}
+
+
+/* ------------------------------------------------------------
+   画面上部に固定されるナビ（入力画面・各書類の切り替え）
+------------------------------------------------------------ */
+.nav-bar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  max-width: 900px;
+  margin: 0 auto 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: var(--shadow-view);
+}
+.nav-tab {
+  flex: 1 1 auto;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.nav-tab:hover { background: var(--accent-bg-hover); color: var(--accent); }
+.nav-tab.active { background: var(--accent); color: #fff; }
+
+/* 非嫡出子の母・登記申請書の入力カード */
+.reg-card {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color-strong);
+  border-radius: 6px;
+  background: var(--bg-card);
+}
+.reg-card-title { font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+.reg-note { font-size: 12px; color: var(--text-secondary); margin: 6px 0; line-height: 1.6; }
+.reg-warn { color: var(--danger); font-weight: 600; }
+
+/* 住所に関する注意ポップアップ */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.5);
+}
+.modal-box {
+  width: 100%;
+  max-width: 460px;
+  padding: 20px 22px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border-radius: 12px;
+  box-shadow: var(--shadow-paper);
+}
+.modal-title { font-size: 16px; font-weight: 700; margin-bottom: 10px; }
+.modal-list { margin: 0 0 12px 18px; padding: 0; font-size: 13px; line-height: 1.7; color: var(--text-secondary); }
+.modal-list li { margin-bottom: 6px; }
+.modal-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
+
+/* 登記申請書 */
+.touki-person { margin-top: 8px; line-height: 1.7; }
+.touki-prop { margin-bottom: 10px; line-height: 1.7; }
+
+.nav-row { display: flex; gap: 4px; flex-wrap: wrap; }
+.nav-sub { padding-top: 4px; border-top: 1px dashed var(--border-color); }
+.nav-sub .nav-tab { font-size: 12px; padding: 6px 10px; }
+
+/* 作成する書類のチェックボックス（階層表示） */
+.doc-tree-child { margin-left: 22px; padding-left: 10px; border-left: 2px solid var(--border-color); }
+
+/* ホバー表示の注意書き（押印・日付・住所の欄などに表示） */
+.hover-tip {
+  position: fixed;
+  z-index: 100;
+  width: 360px;
+  max-width: calc(100vw - 16px);
+  padding: 12px 14px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow-paper);
+  font-size: 13px;
+}
+.hover-tip-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
+.hover-tip-close { border: none; background: transparent; color: var(--text-secondary); font-size: 18px; line-height: 1; cursor: pointer; }
+.hover-tip-list { margin: 0 0 8px 18px; padding: 0; line-height: 1.7; color: var(--text-secondary); }
+.hover-tip-list li { margin-bottom: 4px; }
+.hover-tip-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); cursor: pointer; }
+
+/* 押印欄・日付欄はホバーで注意書きが出ることが分かるよう、点線の下線を引く（印刷では出さない） */
+.seal-mark, [data-tip].doc-tip-target { border-bottom: 1px dotted var(--text-secondary); cursor: help; }
+@media print { .seal-mark { border-bottom: none; } }
+
+.kyo-p { line-height: 1.9; margin: 8px 0; }
+.touki-sub { font-size: 12px; color: var(--text-secondary); }
+@media print { .touki-sub { color: inherit; } }
+
+/* 添付書類名などにカーソルを重ねると注意書きが出ることを示す（印刷では出さない） */
+.tip-target { border-bottom: 1px dotted var(--text-secondary); cursor: help; }
+@media print { .tip-target { border-bottom: none; } }
+
+/* 振り分けの確認表 */
+.alloc-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.alloc-table th, .alloc-table td { border: 1px solid var(--border-color-strong); padding: 4px 6px; text-align: left; vertical-align: top; }
+.alloc-table th { background: var(--accent-bg-hover); font-weight: 600; white-space: nowrap; }
+
+/* ページ最下部の最終改定日（印刷では出さない） */
+.app-footer { max-width: 900px; margin: 24px auto 16px; text-align: center; font-size: 12px; color: var(--text-secondary); }
+@media print { .app-footer { display: none !important; } }
+
+/* 手順の見出し（① 〜 ⑥） */
+.step-banner {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px;
+  margin: 22px 0 8px; padding: 8px 12px;
+  background: var(--accent-bg-hover); border-left: 4px solid var(--accent);
+  border-radius: 4px; font-size: 15px; font-weight: 700; color: var(--text-primary);
+}
+.step-no { color: var(--accent); font-size: 18px; }
+.step-sub { flex-basis: 100%; font-size: 12px; font-weight: 400; color: var(--text-secondary); }
+
+/* 被相続人の切り替え */
+.case-row { align-items: center; padding-bottom: 4px; border-bottom: 1px solid var(--border-color); }
+.case-label { font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-right: 4px; }
+.case-tab { padding: 6px 12px; font-size: 13px; font-family: inherit; border: 1px solid var(--border-color-strong); border-radius: 16px; background: var(--bg-card); color: var(--text-primary); cursor: pointer; }
+.case-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+.case-add, .case-del { padding: 6px 10px; font-size: 12px; font-family: inherit; border: 1px dashed var(--border-color-strong); border-radius: 16px; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.case-del { color: var(--danger); }
+
+/* 書類選択の通数・要否の表示 */
+.doc-count { margin-left: 6px; font-size: 12px; color: var(--accent); font-weight: 600; }
+.doc-badge { margin-left: 6px; padding: 1px 8px; font-size: 11px; border-radius: 10px; }
+.doc-badge-need { background: var(--danger); color: #fff; }
+.doc-badge-ok { background: var(--accent-bg-hover); color: var(--text-secondary); }
+@media print { .case-row, .step-banner { display: none !important; } }
+
+/* 上部のプルダウン（被相続人・相続パターン） */
+.sel-label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--text-secondary); }
+.nav-select { padding: 5px 8px; font-size: 13px; font-family: inherit; border: 1px solid var(--border-color-strong); border-radius: 6px; background: var(--bg-card); color: var(--text-primary); max-width: 260px; }
+/* 相続パターン一覧 */
+.pattern-table td, .pattern-table th { font-size: 13px; }
+.pattern-active { background: var(--accent-bg-hover); }
+.heir-checks { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.heir-check { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
+
+/* 入力欄のタブ・使い方・各タブの説明 */
+.input-tabs { align-items: center; padding-top: 4px; border-top: 1px dashed var(--border-color); }
+.nav-select-wide { min-width: 220px; }
+.tab-guide { margin: 0 0 10px; padding: 8px 12px; background: var(--accent-bg-hover); border-radius: 6px; font-size: 13px; line-height: 1.7; color: var(--text-secondary); }
+/* 日付入力（令和 年 月 日） */
+.date-input { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 14px; }
+.date-input .di-num { width: 3.2em; padding: 5px 6px; text-align: center; }
+.date-input .di-copy { margin-left: 8px; }
+/* 相続パターンの階層表示（数次相続） */
+.heir-tree { display: flex; flex-direction: column; gap: 4px; }
+.heir-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.share-input { width: 9em; padding: 3px 6px; }
+
+
+/* 氏名: 各人のカードの見出しで、そのまま書き換えられる */
+.person-item-name-input { font-size: 14px; font-weight: 700; font-family: inherit; color: var(--text-primary); background: var(--bg-card); border: 1px solid var(--border-color-strong); border-radius: 5px; padding: 4px 8px; width: 12em; max-width: 100%; }
+.person-item-name-input::placeholder { color: var(--text-faint); font-weight: 400; }
+.person-item-name-input:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
+.sub-item-who { display: flex; align-items: center; gap: 8px; }
+.sub-item-who .person-item-name-input { font-size: 13px; padding: 3px 6px; }
+
+/* タブの一言の説明と「？」ボタン */
+.guide-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.guide-text { flex: 1; }
+.help-btn { flex: none; width: 28px; height: 28px; padding: 0; font-size: 15px; font-weight: 700; font-family: inherit; line-height: 1; color: #fff; background: var(--accent); border: none; border-radius: 50%; cursor: pointer; }
+.help-btn:hover { background: var(--accent-hover); }
+.help-btn:focus-visible { outline: 3px solid var(--accent-hover); outline-offset: 2px; }
+
+/* 「？」を押したときのモーダル */
+.help-modal { max-width: 640px; max-height: 85vh; overflow-y: auto; }
+.help-modal .modal-list { font-size: 14px; }
+.help-flow { margin: 14px 0 4px; padding: 10px 14px; background: var(--bg-section); border: 1px solid var(--border-color); border-radius: 8px; font-size: 13px; color: var(--text-secondary); }
+.help-flow-title { font-weight: 700; margin-bottom: 4px; }
+.help-flow ol { margin: 0 0 0 18px; padding: 0; }
+.help-flow-now { font-weight: 700; color: var(--accent); }
+
+/* 書類の表示から入力欄へ戻るボタン（ナビに常に表示） */
+.back-input-btn { white-space: nowrap; }
+
+
+/* 続柄: カッコは自動で付く */
+.paren-input { display: inline-flex; align-items: center; gap: 2px; }
+.paren-sign { display: none; }
+.paren-field { width: 8em; max-width: 100%; }
+
+/* 被相続人の追加・削除（ナビ） */
+.case-add-btn { padding: 6px 14px; font-size: 13px; font-weight: 700; font-family: inherit; color: #fff; background: var(--accent); border: none; border-radius: 16px; cursor: pointer; white-space: nowrap; }
+.case-add-btn:hover { background: var(--accent-hover); }
+.case-del { white-space: nowrap; }
+.case-count { font-size: 12px; color: var(--text-secondary); align-self: center; }
+
+/* 被相続人を追加する画面 */
+.case-add-lead { margin: 0 0 12px; font-size: 14px; line-height: 1.7; color: var(--text-secondary); }
+.case-add-list { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.case-add-opt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 10px 14px; font-family: inherit; font-size: 14px; color: var(--text-primary); background: var(--bg-card); border: 1px solid var(--border-color-strong); border-radius: 8px; cursor: pointer; }
+.case-add-opt span { font-size: 12px; color: var(--text-secondary); }
+.case-add-opt:hover { border-color: var(--accent); background: var(--accent-bg-hover); }
+
+/* 人物カードの「被相続人とする手続も作る」チェック */
+.case-link-box { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; background: var(--accent-bg-hover); border-radius: 6px; }
+.case-link-check { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--text-primary); cursor: pointer; }
+.case-link-note { font-size: 12px; color: var(--text-secondary); margin-left: 22px; }
+
+/* 通数 */
+.copies-row { margin-top: 4px; font-size: 13px; color: var(--text-primary); }
+.copies-input { width: 4.5em; padding: 4px 6px; text-align: center; }
+.copies-note { display: block; margin-top: 2px; font-size: 12px; color: var(--text-secondary); }
+.copies-toolbar { align-self: center; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-primary); }
+@media print { .copies-toolbar { display: none !important; } .print-copy { page-break-before: always; } }
+/* .form-group input の「幅100%」を、チェック・続柄・通数の入力欄では打ち消す */
+.case-link-check input[type="checkbox"] { width: auto; padding: 0; border: none; margin: 0; flex: none; }
+.paren-input .paren-field { width: 8em; }
+.paren-input .paren-sign { display: none; }
+.copies-row .copies-input, .copies-toolbar .copies-input { width: 4.5em; }
+
+
+/* チェック欄は、文字の真横に置く（.form-group label の「ブロック表示」と、.form-group input の「幅100%」を打ち消す） */
+label.check-inline, .form-group label.check-inline { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; font-weight: 700; color: var(--text-primary); cursor: pointer; }
+label.check-inline input[type="checkbox"], .form-group label.check-inline input[type="checkbox"] { width: auto; flex: none; margin: 0; padding: 0; border: none; }
+.dead-check { margin-left: 4px; font-weight: 600; font-size: 12px; white-space: nowrap; }
+.dead-box { margin: 6px 0; padding: 8px 10px; background: var(--badge-deceased-bg); border-radius: 6px; }
+.paren-input .paren-field { width: 8em; }
+
+/* 注意書きの一覧 */
+.tips-btn { padding: 6px 12px; font-size: 12px; font-weight: 700; font-family: inherit; color: var(--accent); background: transparent; border: 1px solid var(--accent); border-radius: 16px; cursor: pointer; white-space: nowrap; }
+.tips-btn:hover { background: var(--accent-bg-hover); }
+.tips-item { padding: 8px 0; border-bottom: 1px solid var(--border-color); }
+.tips-item:last-child { border-bottom: none; }
+.tips-item summary { cursor: pointer; font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.tips-item ul { margin: 6px 0 4px 20px; padding: 0; font-size: 13px; line-height: 1.7; color: var(--text-secondary); }
+.tips-state { margin-left: 8px; font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+.tips-state-hidden { color: var(--danger); }
+.hover-tip-hint { margin-top: 6px; font-size: 12px; color: var(--accent); }
+.heir-check-word { font-size: 12px; font-weight: 600; color: var(--accent); }
+.share-interp { margin-top: 3px; font-size: 12px; color: var(--accent); }
+.share-interp.reg-warn { color: var(--danger); }
+
+/* 和暦の日付（元号のプルダウン＋数字）。ありえない日付は、入力を受け付けず、理由を出す */
+.era-date { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 14px; }
+.ed-era { width: auto; padding: 4px 6px; font-size: 14px; font-family: inherit; border: 1px solid var(--border-color-strong); border-radius: 5px; background: var(--bg-card); color: var(--text-primary); }
+.form-group .era-date .ed-era { width: auto; }
+.era-date .di-num { width: 3em; text-align: center; }
+.ed-err { flex-basis: 100%; font-size: 12px; font-weight: 600; color: var(--danger); }
+.dead-judge { margin-top: 4px; font-size: 13px; line-height: 1.6; color: var(--badge-deceased-fg); }
+
+/* 元号のプルダウンのあとで改行しない */
+.era-date { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.era-date .ed-row { display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 4px; white-space: nowrap; }
+.era-date .ed-row > * { flex: none; }
+.era-date.ed-copyable .ed-row { flex-wrap: wrap; white-space: normal; }
+
+/* 被相続人の選択・追加・削除は、色をつけた枠にまとめる */
+.case-box { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 5px 8px; background: var(--badge-deceased-bg); border: 1px solid var(--border-color-strong); border-radius: 10px; }
+.case-box .nav-select { min-width: 8em; }
+.case-add-btn:disabled { opacity: .45; cursor: default; }
+.case-del { color: var(--danger); background: transparent; border: 1px solid var(--danger); border-radius: 16px; padding: 5px 12px; font-size: 13px; font-family: inherit; cursor: pointer; }
+
+/* 注意書きは記号だけ */
+.tips-sym { width: 30px; height: 30px; padding: 0; font-size: 16px; line-height: 1; border-radius: 50%; }
+
+/* モーダルは、パソコンでは、広く */
+@media (min-width: 900px) {
+  .help-modal { max-width: 860px; width: 92vw; }
+  .help-modal.tips-modal { max-width: 1080px; width: 94vw; }
+}
+.tips-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 900px) { .tips-grid { grid-template-columns: 210px 270px 1fr; min-height: 340px; } }
+.tips-col { display: flex; flex-direction: column; gap: 6px; }
+.tips-col-title { font-size: 12px; font-weight: 700; color: var(--text-secondary); }
+.tips-pick { text-align: left; padding: 8px 10px; font-family: inherit; font-size: 13px; color: var(--text-primary); background: var(--bg-card); border: 1px solid var(--border-color-strong); border-radius: 8px; cursor: pointer; }
+.tips-pick:hover { border-color: var(--accent); }
+.tips-pick.on { color: #fff; background: var(--accent); border-color: var(--accent); }
+.tips-pick .tips-state { margin-left: 6px; font-size: 11px; color: inherit; opacity: .85; }
+.tips-body { padding: 12px 16px; background: var(--bg-section); border: 1px solid var(--border-color); border-radius: 8px; }
+.tips-body-title { font-size: 15px; font-weight: 700; margin-bottom: 8px; color: var(--text-primary); }
+.app-footer-privacy { max-width: 760px; margin: 0 auto 8px; line-height: 1.7; }
+
+/* 元号のプルダウンは短く。元号・年・月・日は、必ず1行に並べる */
+.era-date .ed-row { display: inline-flex !important; flex-wrap: nowrap !important; align-items: center; gap: 2px !important; white-space: nowrap !important; }
+.era-date.ed-copyable .ed-row { flex-wrap: wrap !important; }
+.era-date .ed-row select.ed-era { width: 4.4em !important; min-width: 0 !important; max-width: 4.4em !important; flex: 0 0 auto !important; padding: 4px 2px !important; margin-right: 2px; }
+.era-date .ed-row input.di-num { width: 2.5em !important; min-width: 0 !important; flex: 0 0 auto !important; padding: 4px 2px !important; text-align: center; }
+.era-date .ed-row .di-era { flex: 0 0 auto; margin-right: 2px; }
+
+/* 注意書きの目印 */
+.tips-mark { margin-left: 6px; padding: 0 5px; font-size: 12px; font-weight: 700; color: var(--accent); border: 1px solid var(--accent); border-radius: 50%; border-bottom-style: solid; }
+.case-modal { max-width: 460px !important; }
+
+
+/* ============================================================
+   チェック欄と文字は、必ず同じ行に並べる（共通の入力欄スタイルに負けないよう、!important で固定）
+   ============================================================ */
+label.chk { display: inline-flex !important; align-items: center !important; gap: 8px !important; width: auto !important; margin: 0 !important; white-space: nowrap !important; font-size: 13px; font-weight: 600; color: var(--text-primary); cursor: pointer; line-height: 1.4; }
+label.chk > input[type="checkbox"] { display: inline-block !important; flex: 0 0 auto !important; width: 17px !important; height: 17px !important; min-width: 17px; margin: 0 !important; padding: 0 !important; border: none !important; accent-color: var(--accent); cursor: pointer; }
+label.chk > span { display: inline !important; margin: 0 !important; }
+label.chk.heir-check { white-space: normal !important; align-items: flex-start !important; }
+label.chk.heir-check > input[type="checkbox"] { margin-top: 2px !important; }
+label.chk.dead-check { padding: 3px 10px 3px 8px; font-size: 12px; background: var(--badge-deceased-bg); color: var(--badge-deceased-fg); border-radius: 999px; }
+.case-link-row { display: inline-block; margin: 4px 0 8px; padding: 7px 14px; background: var(--accent-bg-hover); border: 1px solid var(--border-color); border-radius: 999px; }
+
+/* ============================================================
+   ボタン・モーダルの見た目（丸みと、やわらかい影）
+   ============================================================ */
+.btn { padding: 9px 20px; border-radius: 999px; font-weight: 600; letter-spacing: .02em; transition: transform .15s ease, box-shadow .2s ease, background .2s ease, color .2s ease, border-color .2s ease; }
+.btn:focus-visible, .case-add-btn:focus-visible, .case-del:focus-visible, .tips-sym:focus-visible, .case-add-opt:focus-visible, .tips-pick:focus-visible { outline: 3px solid var(--accent-bg-hover); outline-offset: 2px; box-shadow: 0 0 0 2px var(--accent); }
+.btn:active { transform: translateY(1px); }
+.btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent-hover)); box-shadow: 0 2px 8px rgba(37, 99, 235, .28); box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 32%, transparent); }
+.btn-primary:hover { background: linear-gradient(135deg, var(--accent-hover), var(--accent-hover)); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(37, 99, 235, .32); box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 38%, transparent); }
+.btn-success { background: linear-gradient(135deg, var(--success), var(--success-hover)); box-shadow: 0 2px 8px rgba(22, 163, 74, .26); }
+.btn-success:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(22, 163, 74, .32); }
+.btn-outline { border: 1.5px solid var(--accent); background: transparent; }
+.btn-outline:hover { background: var(--accent-bg-hover); transform: translateY(-1px); }
+.btn-sm { padding: 5px 13px; }
+.btn-danger { padding: 4px 12px; font-size: 11px; }
+.btn[disabled], .btn:disabled { opacity: .45; cursor: default; transform: none; box-shadow: none; }
+
+.modal-backdrop { background: rgba(15, 23, 42, .42); -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); animation: modal-fade .18s ease-out; }
+.modal-box { padding: 26px 30px 22px; border: 1px solid var(--border-color); border-radius: 22px; box-shadow: 0 28px 70px rgba(15, 23, 42, .30), 0 2px 8px rgba(15, 23, 42, .08); animation: modal-rise .24s cubic-bezier(.2, .8, .2, 1); }
+.modal-title { position: relative; margin: 0 0 16px; padding: 0 0 14px 16px; font-size: 18px; font-weight: 700; letter-spacing: .03em; color: var(--text-primary); border-bottom: 1px solid var(--border-color); }
+.modal-title::before { content: ""; position: absolute; left: 0; top: 2px; width: 5px; height: 20px; border-radius: 3px; background: linear-gradient(180deg, var(--accent), var(--accent-hover)); }
+.modal-actions { gap: 10px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-color); }
+@keyframes modal-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modal-rise { from { opacity: 0; transform: translateY(14px) scale(.98); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .modal-backdrop, .modal-box { animation: none; } .btn, .btn:hover { transition: none; transform: none; } }
+
+/* 被相続人の追加（モーダルの選択肢） */
+.case-modal { max-width: 440px !important; }
+.case-add-list { gap: 10px; margin-top: 4px; }
+.case-add-opt { position: relative; flex-direction: row !important; align-items: center !important; gap: 12px; width: 100%; padding: 14px 44px 14px 18px; font-size: 15px; font-weight: 600; text-align: left; color: var(--text-primary); background: var(--bg-card); border: 1px solid var(--border-color-strong); border-radius: 16px; box-shadow: 0 1px 2px rgba(15, 23, 42, .05); transition: transform .15s ease, box-shadow .2s ease, border-color .2s ease, background .2s ease; }
+.case-add-opt::before { content: ""; flex: none; width: 10px; height: 10px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent-hover)); box-shadow: 0 0 0 4px var(--accent-bg-hover); }
+.case-add-opt::after { content: "›"; position: absolute; right: 18px; top: 50%; transform: translateY(-52%); font-size: 22px; font-weight: 400; color: var(--text-faint); transition: transform .15s ease, color .15s ease; }
+.case-add-opt:hover { transform: translateY(-1px); border-color: var(--accent); background: var(--accent-bg-hover); box-shadow: 0 8px 20px rgba(37, 99, 235, .14); }
+.case-add-opt:hover::after { color: var(--accent); transform: translate(3px, -52%); }
+.case-add-opt.case-add-other { border-style: dashed; color: var(--text-secondary); }
+.case-add-opt.case-add-other::before { content: "＋"; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: var(--accent); background: var(--accent-bg-hover); box-shadow: none; }
+
+/* 被相続人の枠・注意書きのボタン・注意書きの選択肢 */
+.case-box { gap: 8px; padding: 6px 10px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--border-color); }
+.case-box .nav-select { border-radius: 999px; padding: 5px 12px; }
+.case-add-btn { padding: 7px 18px; font-size: 13px; font-weight: 700; letter-spacing: .04em; border-radius: 999px; background: linear-gradient(135deg, var(--accent), var(--accent-hover)); box-shadow: 0 2px 8px rgba(37, 99, 235, .28); transition: transform .15s ease, box-shadow .2s ease; }
+.case-add-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 14px rgba(37, 99, 235, .34); }
+.case-del { padding: 6px 14px; border-radius: 999px; font-weight: 600; transition: background .2s ease, color .2s ease; }
+.case-del:hover { background: var(--danger); color: #fff; }
+.tips-sym, .help-btn { box-shadow: 0 1px 4px rgba(15, 23, 42, .18); transition: transform .15s ease, box-shadow .2s ease, background .2s ease; }
+.tips-sym:hover, .help-btn:hover { transform: translateY(-1px); box-shadow: 0 5px 12px rgba(37, 99, 235, .28); }
+.tips-pick { border-radius: 12px; padding: 10px 14px; transition: transform .15s ease, box-shadow .2s ease, background .2s ease, border-color .2s ease; }
+.tips-pick:hover { transform: translateX(2px); box-shadow: 0 4px 12px rgba(15, 23, 42, .08); }
+.tips-pick.on { background: linear-gradient(135deg, var(--accent), var(--accent-hover)); box-shadow: 0 4px 12px rgba(37, 99, 235, .28); }
+.tips-body { border-radius: 16px; padding: 16px 20px; }
+.tips-modal { max-width: 1080px; }
+
+/* 登記所の選択・都道府県・郵便番号 */
+.office-picker { display: flex; flex-direction: column; gap: 6px; min-width: 260px; }
+.office-picker .op-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.office-picker select { flex: 1 1 200px; min-width: 0; padding: 6px 8px; font-size: 13px; font-family: inherit; border: 1px solid var(--border-color-strong); border-radius: 8px; background: var(--bg-card); color: var(--text-primary); }
+.office-picker select:disabled { opacity: .55; }
+.office-picker .op-free { width: 100%; box-sizing: border-box; padding: 6px 10px; font-size: 13px; font-family: inherit; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-section); color: var(--text-primary); }
+.office-picker .op-hint { font-size: 12px; line-height: 1.5; color: var(--accent); }
+.office-picker .op-hint.op-warn { color: var(--danger); font-weight: 600; }
+.alloc-table td.op-cell { min-width: 300px; }
+.pref-row .postal-input { max-width: 9em; }
+
+.pref-row { flex-wrap: wrap; }
+.pref-row .form-group { flex: 1 1 160px; }
+.pref-row .muni-select { min-width: 0; }
+.op-cands { display: flex; flex-wrap: wrap; gap: 6px; }
+.op-cand { padding: 4px 12px; font-size: 12px; font-family: inherit; color: var(--accent); background: transparent; border: 1px solid var(--accent); border-radius: 999px; cursor: pointer; transition: background .15s ease, color .15s ease; }
+.op-cand:hover, .op-cand.on { color: #fff; background: var(--accent); }
+
+/* ------------------------------------------------------------
+   相続財産タブ: 財産を追加するボタン（ナビの下に固定）と、開閉できる財産のカード
+------------------------------------------------------------ */
+.prop-addbar {
+  position: sticky;
+  top: calc(var(--nav-h, 0px) + 4px);
+  z-index: 40;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px;
+  margin: 8px 0;
+  padding: 6px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow-view);
+}
+.prop-addbar-label { font-size: 12px; font-weight: 700; color: var(--text-secondary); white-space: nowrap; }
+.prop-addbar-btns { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.prop-addbar-select { display: none; flex: 1 1 200px; max-width: none; }
+.prop-addbar-all { margin-left: auto; display: inline-flex; gap: 4px; }
+@media (max-width: 720px) {
+  .prop-addbar-btns { display: none; }
+  .prop-addbar-select { display: block; }
+}
+.prop-card { padding: 0; overflow: visible; scroll-margin-top: calc(var(--nav-h, 0px) + 64px); }
+.prop-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px;
+  cursor: pointer; user-select: none;
+  border-radius: 6px;
+}
+.prop-head:hover { background: var(--accent-bg-hover); }
+.prop-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.prop-kind { font-size: 12px; font-weight: 700; color: var(--accent); white-space: nowrap; }
+.prop-title { flex: 1 1 auto; min-width: 0; font-size: 14px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prop-title-empty { font-weight: 400; color: var(--text-secondary); }
+.prop-caret { font-size: 13px; color: var(--text-secondary); flex: 0 0 auto; width: 1.4em; text-align: center; }
+.prop-open > .prop-head { border-bottom: 1px dashed var(--border-color); border-radius: 6px 6px 0 0; }
+.prop-body { padding: 8px 12px 10px; }
+.prop-foot { margin-top: 6px; padding-top: 8px; border-top: 1px dashed var(--border-color); }
+@media print { .prop-addbar { display: none !important; } }
+
+/* 登記所の欄: 決まったときは名前だけ。またがるときは候補とリンク */
+.office-picker .op-result { font-size: 14px; font-weight: 700; color: var(--text-primary); padding: 4px 0; }
+.office-picker .op-hint a { color: var(--accent); text-decoration: underline; }
+
+/* 相続パターン: 取得割合の欄は、氏名の横に置く（.form-group input の「幅100%」を打ち消す） */
+.heir-row input.share-input { width: 9em; flex: 0 0 auto; }
+
+/* 住所の入力欄: 郵便番号・住所（または、以前に入力した住所を選ぶプルダウン）・「複写」のチェックを、同じ行に並べる */
+.addr-input { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; width: 100%; }
+.form-group .addr-input input.addr-postal { width: 7.5em; flex: 0 0 auto; }
+.form-group .addr-input input.addr-text, .form-group .addr-input select.addr-select { flex: 1 1 auto; min-width: 0; width: auto; }
+.addr-input label.addr-copy { flex: 0 0 auto; font-size: 12px; }
+@media (max-width: 600px) { .addr-input { flex-wrap: wrap; } .form-group .addr-input input.addr-text, .form-group .addr-input select.addr-select { flex: 1 1 100%; order: 3; } }
+
+/* 注意書き: 「一般論」と「例外」の印 */
+.tips-pick .tips-tag-general { background: var(--accent); color: #fff; border-radius: 8px; padding: 0 6px; opacity: 1; }
+.tips-pick .tips-tag-exception { border: 1px solid currentColor; border-radius: 8px; padding: 0 6px; }
+.tips-pick.on .tips-tag-general { background: #fff; color: var(--accent); }
+
+/* タイトルの横に、保存・読込みのボタンと、ダークモードのボタンを並べる */
+.app-header { max-width: 900px; margin: 0 auto 12px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+.app-header h1 { margin: 0; text-align: left; flex: 1 1 auto; min-width: 0; }
+.header-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex: 0 0 auto; }
+@media (max-width: 720px) { .app-header { justify-content: center; } .app-header h1 { text-align: center; flex-basis: 100%; } .header-actions { justify-content: center; } }
+
+/* 用紙（印刷される紙面）は、テーマに関わらず、白地に黒字（body の文字色をテーマに合わせたため、明示する） */
+.paper { color: #000; }
+
+/* 注意書きの中のリンクは、テーマの色（ダークモードで、濃い青のまま読めなくなるのを防ぐ） */
+.tips-body a, .hover-tip a, .modal-list a { color: var(--accent); text-decoration: underline; }
+
+/* 共有者である相続人（住所変更・更正）: チェックと順位番号を、同じ行に */
+.coowner-row { display: flex; align-items: center; gap: 10px; margin: 4px 0; flex-wrap: wrap; }
+.form-group .coowner-row input.coowner-rank { width: 11em; flex: 0 0 auto; }
+
+/* 個体・履歴（台帳）のタブ */
+.ledger-tab details.reg-card { margin-top: 8px; }
+.ledger-tab details.reg-card > summary { cursor: pointer; padding: 2px 0; }
+.ledger-tab .ledger-auto { color: var(--text-secondary); font-size: 0.85em; margin-left: 4px; }
+.ledger-tab .ledger-entry { align-items: flex-start; flex-wrap: wrap; }
+.ledger-tab .ledger-timeline td { vertical-align: top; }

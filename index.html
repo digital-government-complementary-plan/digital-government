@@ -1,0 +1,1713 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>法定相続情報一覧図作れるかもプログラム</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<link rel="stylesheet" href="css/style.css">
+<!-- 画面描画前にテーマ(data-theme属性)を確定させ、
+     ライト/ダークの一瞬の切り替わり(ちらつき)を防ぐ -->
+<script src="js/theme.js"></script>
+</head>
+<body>
+
+<div id="app">
+  <!-- タイトルの横に、保存・読込みのボタンと、ダークモードのボタンを並べる -->
+  <header class="app-header">
+    <h1>法定相続情報一覧図作れるかもプログラム</h1>
+    <div class="header-actions no-print">
+      <button type="button" class="btn btn-outline btn-sm" @click="saveToFile">💾 入力内容を保存</button>
+      <button type="button" class="btn btn-outline btn-sm" @click="triggerLoadFile">📂 保存した内容を読込み</button>
+      <input id="load-file-input" type="file" accept="application/json,.json" style="display:none" @change="onLoadFileSelected">
+      <button type="button" id="theme-toggle-btn" class="theme-toggle-btn" @click="toggleTheme">🌙 ダークモード</button>
+    </div>
+  </header>
+
+  <!-- 画面上部に固定されるナビ。入力画面と各書類を、戻らずに切り替える -->
+  <nav class="nav-bar">
+    <!-- 被相続人と相続パターンの選択（上部に常に表示） -->
+    <div class="nav-row case-row">
+      <span class="case-box">
+        <select class="nav-select" :value="activeCaseId" @change="onCaseSelect($event.target.value, $event)" aria-label="被相続人">
+          <option v-for="c in cases" :key="c.id" :value="c.id">{{ caseLabel(c) }}</option>
+        </select>
+        <button type="button" class="case-add-btn" @click="requestAddCase">追加</button>
+        <button v-if="cases.length > 1" type="button" class="case-del" @click="removeCase(activeCaseId)" title="いま開いている被相続人の手続（入力内容）を削除します">削除</button>
+      </span>
+      <button type="button" class="tips-btn tips-sym" @click="openTips" title="注意書き" aria-label="注意書きを開く">ℹ</button>
+      <label v-if="multiPattern" class="sel-label">相続パターン
+        <select class="nav-select" :value="activePatternId" @change="onPatternSelect($event.target.value, $event)">
+          <option v-for="pt in successorPatterns" :key="pt.id" :value="pt.id">{{ pt.name }}</option>
+          <option value="__new__">＋ 新しいパターンを追加</option>
+        </select>
+      </label>
+    </div>
+    <!-- 書類の表示（入力欄へは「← 入力欄に戻る」ボタン、またはブラウザの戻るボタン） -->
+    <div class="nav-row case-row">
+      <button v-if="currentView === 'preview'" class="btn btn-primary back-input-btn" @click="backToInput">← 入力欄に戻る</button>
+      <label class="sel-label">書類を表示
+        <select class="nav-select nav-select-wide" :value="currentView === 'input' ? 'input' : docType" @change="goTo($event.target.value)">
+          <option value="input">{{ currentView === 'input' ? '（作った書類を選んで表示）' : '入力欄に戻る' }}</option>
+          <option v-if="docEnabled.ichiranzu" value="ichiranzu">法定相続情報一覧図</option>
+          <option v-if="docEnabled.moshidesho" value="moshidesho">　└ 申出書</option>
+          <option v-if="docEnabled.ininjo" value="ininjo">　└ 委任状</option>
+          <option v-if="docEnabled.setsumeizu" value="setsumeizu">相続関係説明図</option>
+          <option v-if="docEnabled.kyogisho" value="kyogisho">遺産分割協議書</option>
+          <option v-if="docEnabled.toki" value="touki">登記申請書</option>
+          <option v-if="docEnabled.toukiIninjo" value="toukiIninjo">　└ 委任状（登記申請）</option>
+<option v-if="docEnabled.jusho" value="jusho">　└ 住所変更（更正）登記申請書</option>
+        </select>
+      </label>
+    </div>
+    <!-- 入力欄のタブ（入力画面のときだけ） -->
+    <div v-if="currentView === 'input'" class="nav-row input-tabs">
+      <span class="case-label">入力</span>
+      <button v-for="t in inputTabs" :key="t.id" class="nav-tab" :class="{ active: activeInputTab === t.id }" @click="inputTab = t.id">{{ t.label }}</button>
+    </div>
+  </nav>
+
+  <div class="container">
+    <!-- 入力画面 -->
+    <div v-if="currentView === 'input'" class="view">
+      <h2>相続情報入力</h2>
+
+      <div v-if="activeInputTab === 'family'" class="toolbar">
+        <button class="btn btn-primary" @click="showDemoSelector = !showDemoSelector">デモを表示</button>
+      </div>
+
+      <!-- デモ選択 -->
+      <div v-if="showDemoSelector && activeInputTab === 'family'" class="section">
+        <div class="section-title">デモパターンを選択（そのまま編集を続けて入力の出発点にできます）</div>
+        <div class="toolbar" style="margin-bottom: 0;">
+          <button class="btn btn-outline btn-sm" @click="pickDemo(0)">配偶者・子</button>
+          <button class="btn btn-outline btn-sm" @click="pickDemo(1)">配偶者・兄弟</button>
+          <button class="btn btn-outline btn-sm" @click="pickDemo(2)">配偶者・親</button>
+          <button class="btn btn-outline btn-sm" @click="pickDemo(3)">半血兄弟</button>
+          <button class="btn btn-outline btn-sm" @click="pickDemo(4)">非嫡出子</button>
+          <button class="btn btn-outline btn-sm" @click="pickDemo(5)">養子</button>
+          <button class="btn btn-outline btn-sm" @click="pickDemo(6)">代襲相続（再代襲あり）</button>
+          <button class="btn btn-outline btn-sm" @click="pickDemo(7)">数次相続（死亡した相続人）</button>
+        </div>
+      </div>
+
+      <div v-if="loadNotice" class="reg-note reg-warn" style="margin:0 0 10px;">⚠ {{ loadNotice }}</div>
+      <div class="tab-guide guide-bar">
+        <span class="guide-text">{{ tabHelpShort }}</span>
+        <button type="button" class="help-btn" @click="openHelp" title="このタブの説明を表示" aria-label="このタブの説明を表示">？</button>
+      </div>
+
+      <div v-show="activeInputTab === 'family'">
+      <!-- 被相続人 -->
+      <div class="section">
+        <div class="section-title">被相続人</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>氏名</label>
+            <input type="text" v-model="deceased.name">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>出生</label>
+            <era-date v-model="deceased.birth" kind="birth" :not-after="deceased.death"></era-date>
+          </div>
+          <div class="form-group">
+            <label>死亡</label>
+            <era-date v-model="deceased.death" kind="death" :not-before="deceased.birth"></era-date>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>最後の住所</label>
+          <address-input v-model="deceased.lastAddr"></address-input>
+        </div>
+        <div class="form-group">
+          <label>最後の本籍（任意）<span class="tip-target tips-mark" data-tip="hoseki" title="最後の本籍の記載について">ℹ</span></label>
+          <input type="text" v-model="deceased.lastHoseki" data-tip="hoseki">
+        </div>
+        <div v-if="hasIllegitimateChild" class="empty-state" style="text-align:left; border-radius:4px; padding:8px;"
+             :style="illegitimateDateStatus === 'invalid' ? 'background:var(--badge-deceased-bg); color:var(--badge-deceased-fg);' : (illegitimateDateStatus === 'unknown' ? 'background:var(--sub-card-bg);' : 'background:var(--badge-illegitimate-bg); color:var(--badge-illegitimate-fg);')">
+          <template v-if="illegitimateDateStatus === 'invalid'">
+            ⚠ 被相続人の死亡日が平成25年9月5日以後のため、非嫡出子としての特別な表記（生母を「（女）」とする表記）は行われません。通常の子として扱います。
+          </template>
+          <template v-else-if="illegitimateDateStatus === 'unknown'">
+            ※ 被相続人の死亡年月日を入力すると、非嫡出子の記載様式（平成25年9月4日以前の相続のみ）を適用するかを、自動で判定します。現在は仮に適用しています。
+          </template>
+          <template v-else>
+            ✓ 被相続人の死亡日が平成25年9月4日以前のため、非嫡出子の記載様式（生母を「（女）」とする表記）を適用します。
+          </template>
+        </div>
+      </div>
+
+      <!-- 配偶者 -->
+      <div class="section">
+        <div class="section-title">配偶者</div>
+        <div class="person-item" :class="{ expanded: expandedSpouse }" @click="expandedSpouse = !expandedSpouse">
+          <div class="person-item-header">
+            <div class="person-item-info">
+              <span class="person-item-role">{{ spouse.role || '（配偶者）' }}</span>
+              <input type="text" class="person-item-name-input" v-model="spouse.name" placeholder="氏名を入力" aria-label="氏名" @click.stop>
+              <label class="chk dead-check" @click.stop><input type="checkbox" :checked="!!spouse.death" @change="toggleDead(spouse, $event)"><span>死亡</span></label>
+              <div class="person-item-badges">
+                <span v-if="docEnabled.ichiranzu && spouse.isApplicant" class="badge badge-applicant">申出人</span>
+                <span v-if="docEnabled.ichiranzu && spouse.isCreator" class="badge badge-applicant">作成者</span>
+              </div>
+            </div>
+          </div>
+          <div v-if="expandedSpouse" class="person-detail" @click.stop>
+            <div class="form-row">
+              <div class="form-group">
+                <label>続柄</label>
+                <paren-input v-model="spouse.role" placeholder="妻"></paren-input>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>出生</label>
+              <era-date v-model="spouse.birth" kind="birth" :not-after="spouse.death"></era-date>
+            </div>
+            <dead-fields :person="spouse" :judge-fn="deathJudgeText" :check-fn="checkHeirStatus"></dead-fields>
+            <div v-if="spouse.death && deathJudge(spouse).state === 'after'" class="reg-note">被相続人の死亡後に亡くなっているため、この方も相続人です（数次相続）。法定相続情報一覧図には、死亡年月日つきで表示されます。この方の相続人は図に表示されません。相続関係説明図・遺産分割協議書・登記申請書でこの方の相続人まで記載したいときは、「この方を被相続人とする手続も作る」で別に作ってください。</div>
+            <div class="form-group">
+              <label>住所（任意）</label>
+              <address-input v-model="spouse.addr" tip="addr"></address-input>
+            </div>
+            <div v-if="docEnabled.ichiranzu" class="checkbox-group">
+              <input type="checkbox" v-model="spouse.isApplicant">
+              <label>申出人</label>
+            </div>
+            <div v-if="docEnabled.ichiranzu && (!creatorPerson || creatorPerson.id === spouse.id)" class="checkbox-group">
+              <input type="checkbox" :checked="spouse.isCreator" @change="toggleCreator(spouse)">
+              <label>作成者（この法定相続情報一覧図の作成者本人である場合）</label>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <div v-if="spouse.name && deathDateEntered(spouse)" class="case-link-row"><label class="chk case-link-check"><input type="checkbox" :checked="!!linkedCase(spouse)" @change="toggleCaseFromPerson(spouse, $event)"><span>この方を被相続人とする手続も作る</span></label></div>
+
+      <!-- 子 -->
+      <div v-if="showChildren" class="section">
+        <div class="section-title" style="display: flex; justify-content: space-between; align-items: center;">
+          <span>子（第1順位の相続人）</span>
+          <button class="btn btn-primary btn-sm" @click="addChild">＋ 追加</button>
+        </div>
+        <div v-if="children.length === 0" class="empty-state">
+          子がいません。「＋ 追加」ボタンで追加してください。
+        </div>
+        <div v-if="hasIllegitimateChild && illegitimateApplicable" class="reg-card">
+          <div class="reg-card-title">非嫡出子の母</div>
+          <div class="reg-note">母が異なる非嫡出子は、母ごとに図でまとめ分けます。各子の欄で母を選んでください。法定相続情報一覧図では氏名を記載せず「（女１）」「（女２）」等の続柄のみ、相続関係説明図では氏名を記載します。</div>
+          <div v-for="(m, mi) in extraRelations.illegitimateMothers" :key="m.id" class="form-row" style="align-items:flex-end;">
+            <div class="form-group">
+              <label>母{{ mi + 1 }}の氏名（相続関係説明図用・任意）</label>
+              <input type="text" v-model="m.name" placeholder="未入力なら「母{{ mi + 1 }}」">
+            </div>
+            <button v-if="extraRelations.illegitimateMothers.length > 1" class="btn btn-danger" style="margin-bottom:10px;" @click="removeMother(mi)">削除</button>
+          </div>
+          <button class="btn btn-outline btn-sm" @click="addMother">＋ 母を追加</button>
+        </div>
+        <div class="person-list">
+          <div v-for="(c, i) in children" :key="c.id" class="person-item" :class="{ expanded: expandedChildren.includes(c.id) }" @click="toggleChild(c.id)">
+            <div class="person-item-header">
+              <div class="person-item-info">
+                <span class="person-item-role">{{ c.role || '（子）' }}</span>
+                <input type="text" class="person-item-name-input" v-model="c.name" placeholder="氏名を入力" aria-label="氏名" @click.stop>
+              <label class="chk dead-check" @click.stop><input type="checkbox" :checked="!!c.death" @change="toggleDead(c, $event)"><span>死亡</span></label>
+                <div class="person-item-badges">
+                  <span v-if="docEnabled.ichiranzu && c.isApplicant" class="badge badge-applicant">申出人</span>
+                  <span v-if="docEnabled.ichiranzu && c.isCreator" class="badge badge-applicant">作成者</span>
+                  <span v-if="c.death" class="badge badge-deceased">{{ deathBadge(c) }}</span>
+                  <span v-if="c.isAdopted" class="badge badge-adopted">養子</span>
+                  <span v-if="c.isIllegitimate && illegitimateApplicable" class="badge badge-illegitimate">非嫡出</span>
+                </div>
+              </div>
+              <button class="btn btn-danger" @click.stop="removeChild(i)">削除</button>
+            </div>
+            <div v-if="expandedChildren.includes(c.id)" class="person-detail" @click.stop>
+              <div v-if="deathKind(c) === 'after'" class="empty-state" style="text-align:left; background:var(--sub-card-bg); border-radius:4px; padding:8px; margin-bottom:8px;">
+                被相続人の死亡後に亡くなっているため、この方も相続人です（数次相続）。法定相続情報一覧図には、この方が死亡年月日つきの相続人として表示され、この方の相続人は表示されません（この方を被相続人とする法定相続情報一覧図は、「この方を被相続人とする手続も作る」にチェックを入れて、別に作ります）。相続関係説明図・遺産分割協議書・登記申請書では、下に入力するこの方の相続人が、承継者として記載されます。
+              </div>
+              <div v-else-if="c.substitutes.length > 0" class="empty-state" style="text-align:left; background:var(--sub-card-bg); border-radius:4px; padding:8px; margin-bottom:8px;">
+                代襲相続人が入力されているため、法定相続情報一覧図では、この方は「（被代襲者）」として死亡年月日だけが表示されます（氏名・出生・住所は表示されません）。{{ usesPatterns ? '相続関係説明図などでは氏名・出生・住所も表示されるので、続けて入力してください。' : '法定相続情報一覧図だけを作る場合は、どの方の系統かを見分けるための氏名と、死亡年月日だけを入力すれば足ります。' }}
+              </div>
+              <div class="form-row">
+                <div v-if="!isCompactDead(c)" class="form-group">
+                  <label>続柄</label>
+                  <paren-input v-model="c.role" placeholder="長男"></paren-input>
+                </div>
+              </div>
+              <div v-if="!isCompactDead(c)" class="form-group">
+                <label>出生</label>
+                <era-date v-model="c.birth" kind="birth" :not-after="c.death"></era-date>
+              </div>
+              <dead-fields :person="c" :judge-fn="deathJudgeText" :check-fn="checkHeirStatus"></dead-fields>
+              <div v-if="!isCompactDead(c)" class="form-group">
+                <label>住所（任意）</label>
+                <address-input v-model="c.addr" tip="addr"></address-input>
+              </div>
+              <div v-if="deathDateEntered(c)" class="case-link-row"><label class="chk case-link-check"><input type="checkbox" :checked="!!linkedCase(c)" @change="toggleCaseFromPerson(c, $event)"><span>この方を被相続人とする手続も作る</span></label></div>
+              <template v-if="c.substitutes.length === 0">
+                <div v-if="docEnabled.ichiranzu" class="checkbox-group">
+                  <input type="checkbox" v-model="c.isApplicant">
+                  <label>申出人</label>
+                </div>
+                <div v-if="docEnabled.ichiranzu && (!creatorPerson || creatorPerson.id === c.id)" class="checkbox-group">
+                  <input type="checkbox" :checked="c.isCreator" @change="toggleCreator(c)">
+                  <label>作成者（この法定相続情報一覧図の作成者本人である場合）</label>
+                </div>
+                <div class="checkbox-group">
+                  <input type="checkbox" v-model="c.isAdopted">
+                  <label>養子</label>
+                </div>
+                <div v-if="illegitimateApplicable || c.isIllegitimate" class="checkbox-group">
+                  <input type="checkbox" v-model="c.isIllegitimate" @change="onIllegitimateChange(c)">
+                  <label>嫡出でない子</label>
+                </div>
+                <div v-if="c.isIllegitimate" class="form-group" style="margin-left: 24px;">
+                  <label>この子の母（同じ母の子は図でまとめられます）</label>
+                  <select v-model="c.motherId">
+                    <option v-for="(m, mi) in extraRelations.illegitimateMothers" :key="m.id" :value="m.id">{{ motherLabel(m, mi) }}</option>
+                  </select>
+                </div>
+              </template>
+
+              <template v-if="substitutesWanted(c)">
+                <substitute-editor
+                  :substitutes="c.substitutes"
+                  :parent-obj="c"
+                  :is-expanded-fn="isSubExpanded"
+                  :toggle-fn="toggleSubstitute"
+                  :add-fn="addSubstituteTo"
+                  :remove-fn="removeSubstituteFrom"
+                  :toggle-creator-fn="toggleCreator"
+                  :show-ichiranzu="docEnabled.ichiranzu"
+                  :creator-person="creatorPerson"
+                  :case-linked-fn="linkedCase"
+                  :toggle-case-fn="toggleCaseFromPerson"
+                  :death-kind-fn="deathKind"
+                  :compact-dead-fn="isCompactDead"
+                  :dead-api="deadApi"
+                  :allow-recursive="true"
+                  :title="deathKind(c) === 'after' ? 'この方の相続人（数次相続）' : '代襲相続人（孫）'"
+                ></substitute-editor>
+
+                <button class="btn btn-outline btn-sm" style="margin-top: 6px;" @click.stop="addSubstituteTo(c)">
+                  {{ deathKind(c) === 'after' ? '＋ この方の相続人を追加（数次相続）' : '＋ 代襲相続人を追加' }}
+                </button>
+              </template>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 兄弟姉妹 -->
+      <div v-if="showSiblings" class="section">
+        <div class="section-title" style="display: flex; justify-content: space-between; align-items: center;">
+          <span>兄弟姉妹（第3順位の相続人）</span>
+          <button class="btn btn-primary btn-sm" @click="addSibling">＋ 追加</button>
+        </div>
+        <div v-if="siblings.length === 0" class="empty-state">
+          兄弟姉妹がいません。「＋ 追加」ボタンで追加してください。
+        </div>
+        <div class="person-list">
+          <div v-for="(s, i) in siblings" :key="s.id" class="person-item" :class="{ expanded: expandedSiblings.includes(s.id) }" @click="toggleSibling(s.id)">
+            <div class="person-item-header">
+              <div class="person-item-info">
+                <span class="person-item-role">{{ s.role || '（兄弟姉妹）' }}</span>
+                <input type="text" class="person-item-name-input" v-model="s.name" placeholder="氏名を入力" aria-label="氏名" @click.stop>
+              <label class="chk dead-check" @click.stop><input type="checkbox" :checked="!!s.death" @change="toggleDead(s, $event)"><span>死亡</span></label>
+                <div class="person-item-badges">
+                  <span v-if="docEnabled.ichiranzu && s.isApplicant" class="badge badge-applicant">申出人</span>
+                  <span v-if="docEnabled.ichiranzu && s.isCreator" class="badge badge-applicant">作成者</span>
+                  <span v-if="s.isHalfBlood" class="badge badge-illegitimate">半血縁</span>
+                  <span v-if="s.death" class="badge badge-deceased">{{ deathBadge(s) }}</span>
+                </div>
+              </div>
+              <button class="btn btn-danger" @click.stop="removeSibling(i)">削除</button>
+            </div>
+            <div v-if="expandedSiblings.includes(s.id)" class="person-detail" @click.stop>
+              <div v-if="deathKind(s) === 'after'" class="empty-state" style="text-align:left; background:var(--sub-card-bg); border-radius:4px; padding:8px; margin-bottom:8px;">
+                被相続人の死亡後に亡くなっているため、この方も相続人です（数次相続）。法定相続情報一覧図には、この方が死亡年月日つきの相続人として表示され、この方の相続人は表示されません（この方を被相続人とする法定相続情報一覧図は、「この方を被相続人とする手続も作る」にチェックを入れて、別に作ります）。相続関係説明図・遺産分割協議書・登記申請書では、下に入力するこの方の相続人が、承継者として記載されます。
+              </div>
+              <div v-else-if="s.substitutes && s.substitutes.length > 0" class="empty-state" style="text-align:left; background:var(--sub-card-bg); border-radius:4px; padding:8px; margin-bottom:8px;">
+                代襲相続人（甥姪）が入力されているため、法定相続情報一覧図では、この方は「（被代襲者）」として死亡年月日だけが表示されます（氏名・出生・住所は表示されません）。{{ usesPatterns ? '相続関係説明図などでは氏名・出生・住所も表示されるので、続けて入力してください。' : '法定相続情報一覧図だけを作る場合は、どの方の系統かを見分けるための氏名と、死亡年月日だけを入力すれば足ります。' }}
+              </div>
+              <div class="form-row">
+                <div v-if="!isCompactDead(s)" class="form-group">
+                  <label>続柄</label>
+                  <paren-input v-model="s.role" placeholder="弟"></paren-input>
+                </div>
+              </div>
+              <div v-if="!isCompactDead(s)" class="form-group">
+                <label>出生</label>
+                <era-date v-model="s.birth" kind="birth" :not-after="s.death"></era-date>
+              </div>
+              <dead-fields :person="s" :judge-fn="deathJudgeText" :check-fn="checkHeirStatus"></dead-fields>
+              <div v-if="!isCompactDead(s)" class="form-group">
+                <label>住所（任意）</label>
+                <address-input v-model="s.addr" tip="addr"></address-input>
+              </div>
+              <div v-if="deathDateEntered(s)" class="case-link-row"><label class="chk case-link-check"><input type="checkbox" :checked="!!linkedCase(s)" @change="toggleCaseFromPerson(s, $event)"><span>この方を被相続人とする手続も作る</span></label></div>
+              <template v-if="!s.substitutes || s.substitutes.length === 0">
+                <div v-if="docEnabled.ichiranzu" class="checkbox-group">
+                  <input type="checkbox" v-model="s.isApplicant">
+                  <label>申出人</label>
+                </div>
+                <div v-if="docEnabled.ichiranzu && (!creatorPerson || creatorPerson.id === s.id)" class="checkbox-group">
+                  <input type="checkbox" :checked="s.isCreator" @change="toggleCreator(s)">
+                  <label>作成者（この法定相続情報一覧図の作成者本人である場合）</label>
+                </div>
+                <div class="checkbox-group">
+                  <input type="checkbox" v-model="s.isHalfBlood">
+                  <label>半血縁（父母の一方のみ同じ）</label>
+                </div>
+                <div v-if="s.isHalfBlood" class="form-group">
+                  <label>共通の親</label>
+                  <select v-model="s.halfBloodParent">
+                    <option value="father">父のみ</option>
+                    <option value="mother">母のみ</option>
+                  </select>
+                </div>
+              </template>
+
+              <template v-if="substitutesWanted(s)">
+                <substitute-editor
+                  :substitutes="s.substitutes"
+                  :parent-obj="s"
+                  :is-expanded-fn="isSubExpanded"
+                  :toggle-fn="toggleSubstitute"
+                  :add-fn="addSiblingSubstitute"
+                  :remove-fn="removeSiblingSubstitute"
+                  :toggle-creator-fn="toggleCreator"
+                  :show-ichiranzu="docEnabled.ichiranzu"
+                  :creator-person="creatorPerson"
+                  :case-linked-fn="linkedCase"
+                  :toggle-case-fn="toggleCaseFromPerson"
+                  :death-kind-fn="deathKind"
+                  :compact-dead-fn="isCompactDead"
+                  :dead-api="deadApi"
+                  :allow-recursive="false"
+                  :title="deathKind(s) === 'after' ? 'この方の相続人（数次相続）' : '代襲相続人（甥・姪）'"
+                ></substitute-editor>
+
+                <button class="btn btn-outline btn-sm" style="margin-top: 6px;" @click.stop="addSiblingSubstitute(s)">
+                  {{ deathKind(s) === 'after' ? '＋ この方の相続人を追加（数次相続）' : '＋ 代襲相続人（甥・姪）を追加' }}
+                </button>
+              </template>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 親 -->
+      <div v-if="showParents" class="section">
+        <div class="section-title" style="display: flex; justify-content: space-between; align-items: center;">
+          <span>親（第2順位の相続人）</span>
+          <button class="btn btn-primary btn-sm" @click="addParent">＋ 追加</button>
+        </div>
+        <div v-if="parents.length === 0" class="empty-state">
+          親がいません。「＋ 追加」ボタンで追加してください。
+        </div>
+        <div class="person-list">
+          <div v-for="(p, i) in parents" :key="p.id" class="person-item" :class="{ expanded: expandedParents.includes(p.id) }" @click="toggleParent(p.id)">
+            <div class="person-item-header">
+              <div class="person-item-info">
+                <span class="person-item-role">{{ p.role || '（親）' }}</span>
+                <input type="text" class="person-item-name-input" v-model="p.name" placeholder="氏名を入力" aria-label="氏名" @click.stop>
+              <label class="chk dead-check" @click.stop><input type="checkbox" :checked="!!p.death" @change="toggleDead(p, $event)"><span>死亡</span></label>
+                <div class="person-item-badges">
+                  <span v-if="docEnabled.ichiranzu && p.isApplicant" class="badge badge-applicant">申出人</span>
+                  <span v-if="docEnabled.ichiranzu && p.isCreator" class="badge badge-applicant">作成者</span>
+                </div>
+              </div>
+              <button class="btn btn-danger" @click.stop="removeParent(i)">削除</button>
+            </div>
+            <div v-if="expandedParents.includes(p.id)" class="person-detail" @click.stop>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>続柄</label>
+                  <paren-input v-model="p.role" placeholder="父"></paren-input>
+                </div>
+              </div>
+              <div class="form-group">
+                <label>出生</label>
+                <era-date v-model="p.birth" kind="birth" :not-after="p.death"></era-date>
+              </div>
+              <dead-fields :person="p" :judge-fn="deathJudgeText" :check-fn="checkHeirStatus"></dead-fields>
+              <div class="form-group">
+                <label>住所（任意）</label>
+                <address-input v-model="p.addr" tip="addr"></address-input>
+              </div>
+            <div v-if="deathDateEntered(p)" class="case-link-row"><label class="chk case-link-check"><input type="checkbox" :checked="!!linkedCase(p)" @change="toggleCaseFromPerson(p, $event)"><span>この方を被相続人とする手続も作る</span></label></div>
+              <div v-if="docEnabled.ichiranzu" class="checkbox-group">
+                <input type="checkbox" v-model="p.isApplicant">
+                <label>申出人</label>
+              </div>
+              <div v-if="docEnabled.ichiranzu && (!creatorPerson || creatorPerson.id === p.id)" class="checkbox-group">
+                <input type="checkbox" :checked="p.isCreator" @change="toggleCreator(p)">
+                <label>作成者（この法定相続情報一覧図の作成者本人である場合）</label>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 相続人の状況（未成年者・成年被後見人など） -->
+      <div v-if="docEnabled.kyogisho || docEnabled.toki" class="section">
+        <div class="section-title">相続人の状況（未成年者・成年被後見人など）</div>
+        <div class="reg-note" data-tip="legal_minor" style="cursor:help;">
+          相続人に未成年者（18歳未満）や成年被後見人がいる場合は、法定代理人が代わって申請・署名押印します。カーソルを重ねると注意点が表示されます。
+        </div>
+        <div v-for="w in legalWarnings" :key="w.text" class="reg-note reg-warn">⚠ {{ w.text }}</div>
+        <div v-for="h in kyogishoSigners" :key="h.id" class="reg-card">
+          <div class="reg-card-title">{{ h.role }} {{ h.name || '未入力' }}（生年月日：{{ h.birth || '未入力' }}）</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>状況</label>
+              <select :value="applicantInfo(h).status" @change="setApplicantField(h, 'status', $event.target.value)">
+                <option value="none">制限なし</option>
+                <option value="minor">未成年者</option>
+                <option value="ward">成年被後見人</option>
+                <option value="curatee">被保佐人・被補助人（自動記載なし）</option>
+              </select>
+            </div>
+            <div v-if="applicantInfo(h).status === 'minor' || applicantInfo(h).status === 'ward'" class="form-group">
+              <label>法定代理人の資格</label>
+              <select :value="applicantInfo(h).repRole" @change="setApplicantField(h, 'repRole', $event.target.value)">
+                <option v-if="applicantInfo(h).status === 'minor'" value="親権者">親権者</option>
+                <option v-if="applicantInfo(h).status === 'minor'" value="未成年後見人">未成年後見人</option>
+                <option v-if="applicantInfo(h).status === 'ward'" value="成年後見人">成年後見人</option>
+                <option value="特別代理人">特別代理人</option>
+              </select>
+            </div>
+          </div>
+          <div v-if="applicantInfo(h).status === 'minor' || applicantInfo(h).status === 'ward'" class="form-row">
+            <div class="form-group"><label>法定代理人の氏名</label><input type="text" :value="applicantInfo(h).repName" @input="setApplicantField(h, 'repName', $event.target.value)"></div>
+            <div class="form-group"><label>法定代理人の住所</label><address-input :model-value="applicantInfo(h).repAddr" @update:model-value="setApplicantField(h, 'repAddr', $event)"></address-input></div>
+          </div>
+          <div v-if="applicantInfo(h).status === 'curatee'" class="reg-note">被保佐人・被補助人は、保佐人・補助人の同意が必要になることがあります。登記申請書・遺産分割協議書には自動で記載しませんので、司法書士・法務局にご確認ください。</div>
+        </div>
+      </div>
+
+      </div>
+      <div v-show="activeInputTab === 'docs'">
+      <!-- 作成する書類の選択 -->
+      <div class="section">
+        <div class="doc-tree">
+          <div class="checkbox-group">
+            <input id="doc-ichiranzu" type="checkbox" v-model="docs.ichiranzu">
+            <label for="doc-ichiranzu">法定相続情報一覧図 <span v-if="docs.ichiranzu" class="doc-count">{{ docCounts.ichiranzu }}通（この被相続人につき1通）</span></label>
+          </div>
+          <div v-if="docs.ichiranzu" class="doc-tree-child">
+            <div class="checkbox-group">
+              <input id="doc-moshidesho" type="checkbox" v-model="docs.moshidesho">
+              <label for="doc-moshidesho">申出書（法定相続情報一覧図の保管及び交付の申出書） <span v-if="docs.moshidesho" class="doc-count">{{ docCounts.moshidesho }}通</span></label>
+            </div>
+            <div v-if="docs.moshidesho" class="doc-tree-child">
+              <div v-if="creator.isAgentMode" class="checkbox-group">
+                <input id="doc-ininjo" type="checkbox" v-model="docs.ininjo">
+                <label for="doc-ininjo">委任状（代理人が申出をする場合） <span v-if="docs.ininjo" class="doc-count">{{ docCounts.ininjo }}通</span></label>
+              </div>
+              <div v-else class="reg-note">相続人の「作成者」にチェックを入れず、代理人が作成者になる場合は、委任状も作成できます。</div>
+            </div>
+          </div>
+          <div class="checkbox-group">
+            <input id="doc-setsumeizu" type="checkbox" v-model="docs.setsumeizu">
+            <label for="doc-setsumeizu">相続関係説明図 <span v-if="docs.setsumeizu" class="doc-count">{{ docCounts.setsumeizu }}組（相続パターンごとに1組）</span></label>
+          </div>
+          <div v-if="docs.setsumeizu" class="doc-tree-child copies-row">
+            印刷する通数：<input type="number" min="1" max="99" class="copies-input" v-model.number="docs.setsumeizuCopies" @blur="docs.setsumeizuCopies = clampCopies(docs.setsumeizuCopies)" aria-label="相続関係説明図の通数"> 通ずつ
+            <span class="copies-note">（合計 {{ docCounts.setsumeizu * clampCopies(docs.setsumeizuCopies) }}通）登記所へ提出する分、相続人がそれぞれ保管する分など、同じ内容を複数通ほしいときに設定します。</span>
+          </div>
+          <div class="checkbox-group">
+            <input id="doc-kyogisho" type="checkbox" v-model="docs.kyogisho">
+            <label for="doc-kyogisho">遺産分割協議書
+              <span class="doc-badge" :class="kyogishoAdvice.needed ? 'doc-badge-need' : 'doc-badge-ok'">{{ kyogishoAdvice.needed ? '必要' : '法定相続分どおりなら不要' }}</span>
+            </label>
+          </div>
+          <div v-if="docs.kyogisho" class="doc-tree-child copies-row">
+            印刷する通数：<input type="number" min="1" max="99" class="copies-input" v-model.number="docs.kyogishoCopies" @blur="docs.kyogishoCopies = clampCopies(docs.kyogishoCopies)" aria-label="遺産分割協議書の通数"> 通
+            <span class="copies-note">登記所へ提出する分、相続人がそれぞれ保管する分など、同じ内容を複数通ほしいときに設定します。</span>
+          </div>
+          <div v-if="kyogishoAdvice.needed" class="doc-tree-child reg-note">
+            <div v-for="r in kyogishoAdvice.reasons" :key="r">・{{ r }}</div>
+          </div>
+          <div class="checkbox-group">
+            <input id="doc-toki" type="checkbox" v-model="docs.toki">
+            <label for="doc-toki">登記申請書 <span v-if="docs.toki" class="doc-count">{{ docCounts.toki }}通（申請人の組み合わせ × 管轄登記所ごと）</span></label>
+          </div>
+          <div v-if="docs.toki" class="doc-tree-child">
+            <div v-if="registration.agent.enabled" class="checkbox-group">
+              <input id="doc-toukiininjo" type="checkbox" v-model="docs.toukiIninjo">
+              <label for="doc-toukiininjo">委任状（登記申請を代理人に依頼する場合。委任者は申請人） <span v-if="docs.toukiIninjo" class="doc-count">{{ docCounts.toukiIninjo }}通</span></label>
+            </div>
+            <div v-else class="reg-note">登記申請を司法書士などに依頼する場合は、下の「登記申請書の情報」で代理人を設定すると、委任状も作成できます。</div>
+            <div class="checkbox-group">
+              <input id="doc-jusho" type="checkbox" v-model="docs.jusho">
+              <label for="doc-jusho">共有者である相続人の住所変更（更正）登記申請書 <span v-if="docs.jusho" class="doc-count">{{ docCounts.jusho }}通</span></label>
+            </div>
+            <div v-if="docs.jusho" class="reg-note">被相続人と共有していた不動産に、すでに共有者として登記されている相続人がいて、その住所が登記簿と違うときに、相続登記の前に、続けて申請します。住所変更か住所更正かは、相続人ごとに選べます。</div>
+          </div>
+        </div>
+      </div>
+
+      </div>
+      <div v-show="activeInputTab === 'pattern'">
+      <div v-if="usesPatterns">
+        <div class="section pattern-panel">
+          <div v-if="multiPattern" style="overflow-x:auto;">
+            <table class="alloc-table pattern-table">
+              <tr><th>パターン</th><th>相続する人（権利承継者）</th><th v-if="needShares">相続する財産</th><th>作成書類</th><th></th></tr>
+              <tr v-for="pt in successorPatterns" :key="pt.id" :class="{ 'pattern-active': pt.id === activePatternId }">
+                <td><strong>{{ pt.name }}</strong></td>
+                <td>{{ patternHeirsText(pt) }}</td>
+                <td v-if="needShares">{{ patternAssetsText(pt) }}</td>
+                <td>{{ patternDocsText(pt) }}</td>
+                <td><button class="btn btn-outline btn-sm" :disabled="pt.id === activePatternId" @click="activePatternId = pt.id">{{ pt.id === activePatternId ? '編集中' : '編集' }}</button></td>
+              </tr>
+            </table>
+          </div>
+          <div class="reg-card" style="margin-top:10px;">
+            <div class="reg-card-title" style="display:flex; justify-content:space-between; align-items:center;">
+              <span>{{ multiPattern ? '編集中のパターン：' + activePattern.name : '相続する人' }}</span>
+              <span v-if="multiPattern">
+                <button class="btn btn-primary btn-sm" @click="addPattern">＋ パターンを追加</button>
+                <button class="btn btn-outline btn-sm" @click="duplicatePattern">複製</button>
+                <button class="btn btn-danger btn-sm" :disabled="successorPatterns.length <= 1" @click="removePattern">削除</button>
+              </span>
+            </div>
+            <div v-if="multiPattern" class="form-group"><label>パターン名</label><input type="text" v-model="activePattern.name" placeholder="例：パターン1（長男が相続）"></div>
+            <div class="form-group">
+              <label>相続する人（権利承継者）にチェック</label>
+              <div class="heir-tree">
+                <div v-for="r in patternRows(activePattern)" :key="r.p.id" class="heir-row" :style="{ marginLeft: r.depth * 24 + 'px' }">
+                  <label class="chk heir-check">
+                    <input type="checkbox" :checked="r.selected" @change="setSucc(r.p, $event.target.checked)">
+                    <span><span v-if="r.dead">亡 </span>{{ r.p.role }} {{ r.p.name || '未入力' }}<span class="heir-check-word">　← 相続する</span><span v-if="r.dead" class="reg-note">（{{ r.p.death }}死亡・数次相続：この方の分を、下の相続人が承継）</span></span>
+                  </label>
+                  <input v-if="needShares && r.showShare" type="text" class="share-input" :value="getShare(activePattern, r.p)" @input="setShare(activePattern, r.p, $event.target.value)" placeholder="例：1/2、2分の1" aria-label="取得割合">
+                  <span v-if="needShares && r.showShare && shareInterpret(getShare(activePattern, r.p))" class="share-interp" :class="{ 'reg-warn': !parseShare(getShare(activePattern, r.p)) }">{{ shareInterpret(getShare(activePattern, r.p)) }}</span>
+                </div>
+                <span v-if="patternRows(activePattern).length === 0" class="reg-note">相続人が入力されていません。</span>
+              </div>
+            </div>
+            <div v-for="w in patternWarnings(activePattern)" :key="w" class="reg-note reg-warn">⚠ {{ w }}</div>
+            <template v-if="needShares && sharesStatus(activePattern).needed">
+              <div class="reg-note">共有で相続する場合の取得割合です。同じ親をもつ相続人どうしで、合計が1になるように入力します（数次相続では、亡くなった方の分を承継する相続人どうしで別に入力します）。被相続人が共有持分だけを持っていた不動産では、被相続人の持分をこの割合で分けた持分が登記申請書に記載されます。</div>
+              <div class="reg-note" :class="{ 'reg-warn': !sharesStatus(activePattern).ok }">
+                <template v-if="sharesStatus(activePattern).ok">✓ 取得割合の合計は 1 です。</template>
+                <template v-else>⚠ 取得割合の合計が 1 になっていません（現在：{{ sharesStatus(activePattern).total }}{{ sharesStatus(activePattern).missing ? '、未入力・不正な入力が' + sharesStatus(activePattern).missing + '件' : '' }}）。</template>
+                <button class="btn btn-outline btn-sm" style="margin-left:8px;" @click="splitEqually(activePattern)">均等に分ける</button>
+                <button v-if="canFillLegal(activePattern)" class="btn btn-outline btn-sm" style="margin-left:4px;" @click="fillLegalShares(activePattern)">法定相続分で入力</button>
+              </div>
+            </template>
+            <div v-if="needShares" class="reg-note">相続する財産は、「相続財産」タブで、どのパターンで相続するかを選びます。</div>
+            <div v-else-if="multiPattern" class="reg-note">相続関係説明図は、パターンごとに1通ずつ作られます（相続する人の組み合わせが同じパターンは、1通にまとまります）。</div>
+          </div>
+        </div>
+      </div>
+      </div>
+      <div v-show="activeInputTab === 'assets'">
+      <!-- 不動産（遺産分割協議書・登記申請書で共通） -->
+      <div class="section">
+        <div class="section-title">相続財産（不動産・預貯金など。遺産分割協議書・登記申請書で共通）</div>
+        <!-- 財産を追加するボタン（画面上部のナビの下に固定。スクロールしても戻らなくてよい） -->
+        <div class="prop-addbar">
+          <span class="prop-addbar-label">財産を追加</span>
+          <span class="prop-addbar-btns">
+            <button class="btn btn-primary btn-sm" @click="addProperty('land', undefined, true)">＋ 土地</button>
+            <button class="btn btn-primary btn-sm" @click="addProperty('building', undefined, true)">＋ 建物</button>
+            <button class="btn btn-primary btn-sm" @click="addProperty('unit', undefined, true)">＋ 区分建物</button>
+            <button class="btn btn-primary btn-sm" @click="addProperty('deposit', undefined, true)">＋ 預貯金</button>
+            <button class="btn btn-primary btn-sm" @click="addProperty('other', 'stock', true)">＋ 株式</button>
+            <button class="btn btn-primary btn-sm" @click="addProperty('other', 'car', true)">＋ 自動車</button>
+            <button class="btn btn-primary btn-sm" @click="addProperty('other', 'other', true)">＋ その他</button>
+          </span>
+          <select class="prop-addbar-select nav-select" @change="addFromSelect($event)" aria-label="財産を追加">
+            <option value="">＋ 財産を追加（種類を選ぶ）</option>
+            <option value="land">土地</option>
+            <option value="building">建物</option>
+            <option value="unit">区分建物</option>
+            <option value="deposit">預貯金</option>
+            <option value="other:stock">株式</option>
+            <option value="other:car">自動車</option>
+            <option value="other:other">その他（それ以外）</option>
+          </select>
+          <span v-if="registration.properties.length > 1" class="prop-addbar-all">
+            <button class="btn btn-outline btn-sm" @click="setAllProps(true)">すべて開く</button>
+            <button class="btn btn-outline btn-sm" @click="setAllProps(false)">すべて閉じる</button>
+          </span>
+        </div>
+        <div v-if="registration.properties.length === 0" class="empty-state">相続財産がありません。上のボタンで追加してください。</div>
+        <div v-for="(pr, pi) in registration.properties" :key="pr.id" :id="'prop-' + pr.id" class="reg-card prop-card" :class="{ 'prop-open': isPropOpen(pr) }">
+          <!-- 見出し（閉じているときは、所在だけを表示。▼を押すと開く） -->
+          <div class="prop-head" role="button" tabindex="0" :aria-expanded="isPropOpen(pr) ? 'true' : 'false'" @click="toggleProp(pr)" @keydown.enter.self.prevent="toggleProp(pr)" @keydown.space.self.prevent="toggleProp(pr)">
+            <span class="prop-kind">{{ assetKindLabel(pr) }} {{ pi + 1 }}</span>
+            <span class="prop-title" :class="{ 'prop-title-empty': propHeading(pr).charAt(0) === '（' }">{{ propHeading(pr) }}</span>
+            <button type="button" class="btn btn-danger" @click.stop="removeProperty(pi)">削除</button>
+            <span class="prop-caret" aria-hidden="true">{{ isPropOpen(pr) ? '▲' : '▼' }}</span>
+          </div>
+          <div v-show="isPropOpen(pr)" class="prop-body">
+          <!-- ① 所在（まず所在を入力する。ここから、管轄の登記所が決まる） -->
+          <template v-if="isRealEstate(pr)">
+            <div class="form-row pref-row">
+              <div class="form-group">
+                <label>郵便番号</label>
+                <input type="text" class="postal-input" inputmode="numeric" maxlength="8" placeholder="123-4567" :value="pr.postal" @input="onPostalInput(pr, $event)">
+              </div>
+              <div class="form-group">
+                <label>都道府県</label>
+                <select :value="prefOf(pr)" @change="setPref(pr, $event.target.value)">
+                  <option value="">（選ぶ）</option>
+                  <optgroup v-if="prefPriority.length" label="入力済みの住所・本籍から">
+                    <option v-for="p in prefPriority" :key="'pp' + p" :value="p">{{ p }}</option>
+                  </optgroup>
+                  <optgroup v-for="r in prefRegions" :key="r.name" :label="r.name">
+                    <option v-for="p in r.prefs" :key="p" :value="p">{{ p }}</option>
+                  </optgroup>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>市区町村</label>
+                <select class="muni-select" :value="muniOf(pr)" :disabled="!prefOf(pr)" @change="setMunicipality(pr, $event.target.value)">
+                  <option value="">（選ぶ）</option>
+                  <optgroup v-for="g in muniGroups(pr)" :key="g.name" :label="g.name">
+                    <option v-for="m in g.items" :key="m.text" :value="m.text">{{ m.label }}</option>
+                  </optgroup>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label>{{ pr.kind === 'unit' ? '一棟の建物の所在' : '所在' }}</label><input type="text" v-model="pr.location"></div>
+              <div v-if="pr.kind === 'unit'" class="form-group"><label>一棟の建物の名称</label><input type="text" v-model="pr.buildingName"></div>
+            </div>
+            <!-- ② 不動産の表示（所在の直下） -->
+            <template v-if="pr.kind === 'land'">
+              <div class="form-row">
+                <div class="form-group"><label>地番</label><input type="text" v-model="pr.lotNo"></div>
+                <div class="form-group"><label>地目</label><input type="text" v-model="pr.category"></div>
+                <div class="form-group"><label>地積（㎡）</label><input type="text" v-model="pr.area"></div>
+              </div>
+            </template>
+            <template v-else-if="pr.kind === 'building'">
+              <div class="form-row">
+                <div class="form-group"><label>家屋番号</label><input type="text" v-model="pr.lotNo"></div>
+                <div class="form-group"><label>種類</label><input type="text" v-model="pr.category"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label>構造</label><input type="text" v-model="pr.structure"></div>
+                <div class="form-group"><label>床面積（㎡）</label><input type="text" v-model="pr.area" placeholder="複数階は「1階 〇〇㎡ 2階 〇〇㎡」"></div>
+              </div>
+            </template>
+            <template v-else>
+              <div class="reg-note">区分建物（マンション等）は、「一棟の建物の表示」「専有部分の建物の表示」と、敷地権がある場合は「敷地権の表示」を登記事項証明書のとおりに記載します。</div>
+              <div class="form-row">
+                <div class="form-group"><label>専有部分の家屋番号</label><input type="text" v-model="pr.lotNo"></div>
+                <div class="form-group"><label>専有部分の建物の名称（例：301号）</label><input type="text" v-model="pr.unitName"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label>種類</label><input type="text" v-model="pr.category" placeholder="例：居宅"></div>
+                <div class="form-group"><label>構造</label><input type="text" v-model="pr.structure" placeholder="例：鉄筋コンクリート造1階建"></div>
+                <div class="form-group"><label>床面積（㎡）</label><input type="text" v-model="pr.area"></div>
+              </div>
+            </template>
+            <!-- ③ 管轄の登記所（所在から自動で決まる。1つに決まれば名前だけ。またがるときは候補とリンク） -->
+            <div class="form-group">
+              <label>管轄の登記所</label>
+              <office-picker v-model="pr.office" :address="pr.location"></office-picker>
+            </div>
+            <template v-if="pr.kind === 'unit'">
+              <div class="checkbox-group">
+                <input type="checkbox" v-model="pr.hasSiteRight">
+                <label>敷地権の登記がある（敷地権付区分建物）</label>
+              </div>
+              <template v-if="pr.hasSiteRight">
+                <div v-for="(sr, si) in pr.siteRights" :key="si" class="reg-card" style="background:transparent;">
+                  <div class="reg-card-title" style="display:flex; justify-content:space-between;">
+                    <span>敷地権の目的である土地 {{ si + 1 }}</span>
+                    <button v-if="pr.siteRights.length > 1" class="btn btn-danger" @click="removeSiteRight(pr, si)">削除</button>
+                  </div>
+                  <div class="form-row">
+                    <div class="form-group"><label>土地の符号</label><input type="text" v-model="sr.symbol"></div>
+                    <div class="form-group"><label>所在</label><input type="text" v-model="sr.location"></div>
+                    <div class="form-group"><label>地番</label><input type="text" v-model="sr.lotNo"></div>
+                  </div>
+                  <div class="form-row">
+                    <div class="form-group"><label>地目</label><input type="text" v-model="sr.category"></div>
+                    <div class="form-group"><label>地積（㎡）</label><input type="text" v-model="sr.area"></div>
+                  </div>
+                  <div class="form-row">
+                    <div class="form-group"><label>敷地権の種類</label><input type="text" v-model="sr.right"></div>
+                    <div class="form-group"><label>敷地権の割合</label><input type="text" v-model="sr.ratio" placeholder="例：10000分の123"></div>
+                  </div>
+                </div>
+                <button class="btn btn-outline btn-sm" @click="addSiteRight(pr)">＋ 敷地権の目的である土地を追加</button>
+                <div class="form-group" style="margin-top:8px;">
+                  <label>{{ pr.rightKind === 'share' && pr.valueBasis === 'share' ? '敷地権の価額（円。被相続人の持分だけの価額）' : '敷地権の価額（円。土地の評価額のうち敷地権の持分に相当する額）' }}</label>
+                  <input type="text" v-model="pr.landRightValue" placeholder="例：3,456,000">
+                </div>
+                <div class="reg-note">敷地権付区分建物の課税価格は、専有部分の建物の価額に敷地権の価額を加えた額です。</div>
+              </template>
+              <div v-else class="reg-note">敷地権として登記されていない場合、敷地の土地は別の不動産です。「＋ 土地」で追加してください。</div>
+            </template>
+            <!-- ④ 被相続人の権利・評価額 -->
+            <div class="form-row">
+              <div class="form-group">
+                <label>被相続人の権利</label>
+                <select v-model="pr.rightKind">
+                  <option value="full">所有権の全部（単独所有）</option>
+                  <option value="share">共有持分（他の人との共有）</option>
+                </select>
+              </div>
+              <div v-if="pr.rightKind === 'share'" class="form-group">
+                <label>被相続人の持分</label>
+                <input type="text" v-model="pr.deceasedShare" placeholder="例：1/2、2分の1、1万分の123">
+                <div v-if="shareInterpret(pr.deceasedShare)" class="share-interp" :class="{ 'reg-warn': !parseShare(pr.deceasedShare) }">{{ shareInterpret(pr.deceasedShare) }}</div>
+              </div>
+            </div>
+            <div v-if="pr.rightKind === 'share'" class="reg-note">共有持分を相続する場合、登記の目的は「{{ deceased.name || '〇〇' }}持分全部移転」になり、課税価格は不動産全体ではなく<strong>移転する持分の価額</strong>になります。登記申請書の相続人欄には、<strong>被相続人の持分を取得割合で按分した持分</strong>を記載します（例：被相続人の持分1/2を2人が1/2ずつ相続 → 各4分の1。相続人が1人でも持分を記載します）。</div>
+            <div v-if="pr.rightKind === 'share'" class="form-group">
+              <label data-tip="assessed_value" style="cursor:help;">評価証明書に載っている価格は</label>
+              <select v-model="pr.valueBasis">
+                <option value="whole">不動産全体の価額（被相続人の持分は、自動で掛けます）</option>
+                <option value="share">被相続人の持分だけの価額（持分は、掛けません）</option>
+              </select>
+              <div v-if="pr.valueBasis === 'share'" class="reg-note">市区町村によっては、共有持分ごとに価格を出していることがあります。その場合は、被相続人の持分の価額を、そのまま入力してください（課税価格は、その価額から計算します）。</div>
+            </div>
+            <div v-if="pr.rightKind === 'share' && docEnabled.jusho" class="form-group">
+              <label>すでに共有者として登記されている相続人（住所が登記簿と違うときは、住所変更・更正の登記も一緒に作ります）</label>
+              <div v-if="jushoCandidates.length === 0" class="reg-note">相続人の氏名を入力すると、ここで選べます。</div>
+              <div v-for="c in jushoCandidates" :key="c.id" class="coowner-row">
+                <label class="chk"><input type="checkbox" :checked="!!coOwnerEntry(pr, c.id)" @change="toggleCoOwner(pr, c.id, $event.target.checked)"><span>{{ c.label }}</span></label>
+                <input v-if="coOwnerEntry(pr, c.id)" type="text" class="coowner-rank" :value="coOwnerEntry(pr, c.id).rank" @input="setCoOwnerRank(pr, c.id, $event.target.value)" placeholder="順位番号（例：2）" aria-label="順位番号">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label>不動産番号（任意）</label><input type="text" v-model="pr.number"></div>
+              <div class="form-group">
+                <label data-tip="assessed_value" style="cursor:help;">{{ assessedLabel(pr) }}</label>
+                <input type="text" v-model="pr.assessedValue" placeholder="例：12,345,678">
+              </div>
+            </div>
+            <div v-if="propertyTaxLine(pr)" class="reg-note" data-tip="att_hyoka" style="cursor:help;">課税標準：{{ propertyTaxLine(pr) }}</div>
+            <div v-if="pr.kind === 'land' && docEnabled.toki" class="reg-note" data-tip="tax_exempt" style="cursor:help;">
+              登録免許税の免税：{{ exemptionStatus(pr).applies ? '○ 対象（租税特別措置法第84条の2の3第2項により非課税）' : '× 対象外 — ' + exemptionStatus(pr).reason }}
+            </div>
+          </template>
+          <!-- 預貯金・その他の財産 -->
+          <template v-else>
+            <div v-if="pr.kind === 'other'" class="form-group">
+              <label>財産の種類</label>
+              <select v-model="pr.otherKind">
+                <option value="stock">株式</option>
+                <option value="car">自動車</option>
+                <option value="other">それ以外</option>
+              </select>
+            </div>
+            <template v-if="pr.kind === 'other' && pr.otherKind === 'stock'">
+              <div class="form-group"><label>銘柄（会社名）</label><input type="text" v-model="pr.stockIssuer" placeholder="例：〇〇株式会社（証券コード〇〇〇〇）"></div>
+              <div class="form-row">
+                <div class="form-group"><label>株数（株）</label><input type="text" v-model="pr.stockCount" placeholder="例：1,000"></div>
+                <div class="form-group"><label>預けている証券会社など（任意）</label><input type="text" v-model="pr.stockInstitution" placeholder="例：〇〇証券〇〇支店 口座番号〇〇〇〇"></div>
+              </div>
+            </template>
+            <template v-else-if="pr.kind === 'other' && pr.otherKind === 'car'">
+              <div class="form-group"><label>車名</label><input type="text" v-model="pr.carName" placeholder="例：トヨタ プリウス"></div>
+              <div class="form-row">
+                <div class="form-group"><label>登録番号（ナンバー）</label><input type="text" v-model="pr.carRegNo" placeholder="例：〇〇 300 あ 12-34"></div>
+                <div class="form-group"><label>車台番号</label><input type="text" v-model="pr.carVin" placeholder="例：ZVW50-〇〇〇〇〇〇〇"></div>
+              </div>
+            </template>
+            <div v-else class="form-group">
+              <label>{{ pr.kind === 'deposit' ? '預貯金の内容（金融機関・支店・種類・口座番号など）' : '財産の内容（例：貸金庫の内容物、ゴルフ会員権など）' }}</label>
+              <input type="text" v-model="pr.assetName">
+            </div>
+          </template>
+          <!-- ⑤ 相続パターン（財産の表示のあとで、この財産を相続する人を選ぶ）とデモ入力 -->
+          <div class="form-row prop-foot">
+            <div class="form-group">
+              <label>相続パターン（この財産を相続する人）</label>
+              <select v-model="pr.patternId">
+                <option v-for="pt in successorPatterns" :key="pt.id" :value="pt.id">{{ patternLabel(pt) }}</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>デモ入力（この財産だけ入れ替え）</label>
+              <select @change="applyAssetDemo(pr, $event.target.value); $event.target.value = ''">
+                <option value="">（デモを選ぶ）</option>
+                <option v-for="d in assetDemosFor(pr)" :key="d.idx" :value="d.idx">{{ d.label }}</option>
+              </select>
+            </div>
+          </div>
+          </div>
+        </div>
+        <div v-if="allocationRows.length > 0" class="reg-card">
+          <div class="reg-card-title">振り分けの確認（どの不動産が、遺産分割協議書のどの条・どの登記申請書に入るか）</div>
+          <div class="reg-note">相続パターンと取得割合が同じ不動産は、遺産分割協議書の同じ条にまとまります。登記申請書は、<strong>申請人の組み合わせと管轄登記所</strong>が同じ不動産が1通にまとまります（持分や、所有権／持分の別は問いません）。登記申請書の相続人（申請人）は、相続関係説明図で〔相続人〕と記載される人と同じです。</div>
+          <div style="overflow-x:auto;">
+            <table class="alloc-table">
+              <tr><th>不動産</th><th>取得者（取得割合）</th><th>登記申請書に記載される持分</th><th>管轄登記所</th><th v-if="docEnabled.kyogisho">遺産分割協議書</th><th v-if="docEnabled.toki">登記申請書</th></tr>
+              <tr v-for="r in allocationRows" :key="r.prop.id">
+                <td>{{ r.prop.kind === 'land' ? '土地' : r.prop.kind === 'building' ? '建物' : '区分建物' }}　{{ r.prop.location }} {{ r.prop.lotNo }}</td>
+                <td>{{ r.acquirerText }}</td>
+                <td>{{ r.shareText }}</td>
+                <td>{{ r.office || '未入力' }}</td>
+                <td v-if="docEnabled.kyogisho">第{{ zen(r.kyoNo) }}条</td>
+                <td v-if="docEnabled.toki">{{ r.appNos.length ? '登記申請書' + r.appNos.join('・') : '—' }}</td>
+              </tr>
+            </table>
+          </div>
+          <template v-for="r in allocationRows" :key="'w' + r.prop.id">
+            <div v-for="w in r.warnings" :key="w" class="reg-note reg-warn">⚠ {{ r.prop.location }} {{ r.prop.lotNo }}：{{ w }}</div>
+          </template>
+        </div>
+      </div>
+
+      </div>
+      <div v-show="activeInputTab === 'office'">
+      <div v-if="docEnabled.toki">
+        <div class="section">
+          <div class="section-title">不動産の管轄登記所</div>
+          <div v-if="!allocationRows.some(r => r.re)" class="empty-state">不動産がありません。「相続財産」タブで追加してください。</div>
+          <div v-else style="overflow-x:auto;">
+            <table class="alloc-table">
+              <tr><th>不動産</th><th>管轄登記所（法務局・支局・出張所）</th><th>登記申請書</th></tr>
+              <template v-for="r in allocationRows" :key="r.prop.id">
+                <tr v-if="r.re">
+                  <td>{{ assetKindLabel(r.prop) }}　{{ r.prop.location }} {{ r.prop.lotNo }}</td>
+                  <td class="op-cell"><office-picker v-model="r.prop.office" :address="r.prop.location"></office-picker></td>
+                  <td>{{ r.appNos.length ? '登記申請書' + r.appNos.join('・') : '—' }}</td>
+                </tr>
+              </template>
+            </table>
+          </div>
+        </div>
+      <!-- 登記申請書の入力 -->
+      <div v-if="docEnabled.toki" class="section">
+        <div class="section-title">登記申請書の情報</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>申請年月日</label>
+            <date-input v-model="registration.applicationDate" :min-today="true" data-tip="date_toki" @copy="copyDateToAll"></date-input>
+          </div>
+          <div class="form-group">
+            <label>連絡先の電話番号（平日の日中に連絡がつくもの）</label>
+            <input type="text" v-model="registration.contact">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>法定相続情報番号（任意。記載すると、法定相続情報一覧図の写しの添付に代えられます）</label>
+          <input type="text" v-model="registration.lawNumber" placeholder="〇〇〇〇-〇〇-〇〇〇〇〇">
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" v-model="registration.applyExemption">
+          <label data-tip="tax_exempt" style="cursor:help;">評価額が100万円以下の土地は免税として計算する（租税特別措置法第84条の2の3第2項。適用期限は令和9年3月31日）</label>
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" v-model="registration.omitDetailsWithNumber">
+          <label>不動産番号を記載した不動産は、所在・地番等の表示を省略する</label>
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" v-model="registration.useNationality">
+          <label>国籍等の欄・「国籍等を証する情報」を記載する（法務省の最新の見本に合わせています）</label>
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" v-model="registration.noIdentifier">
+          <label>登記識別情報の通知を希望しない（チェックすると、登記識別情報は通知されません）</label>
+        </div>
+
+        <div class="reg-card">
+          <div class="checkbox-group">
+            <input id="toki-agent" type="checkbox" v-model="registration.agent.enabled" @change="onTokiAgentToggle">
+            <label for="toki-agent">登記申請を代理人（司法書士など）に依頼する</label>
+          </div>
+          <div class="reg-note">この代理人は、法定相続情報一覧図の申出人・代理人とは別に設定できます。委任状の委任者は、法定相続情報一覧図の申出人ではなく<strong>登記の申請人（取得者）</strong>です。</div>
+          <template v-if="registration.agent.enabled">
+            <div class="form-group">
+              <label>代理人（親族が代表して手続する場合は、入力済みの氏名から選べます）</label>
+              <select class="agent-pick" :value="registration.agent.pick" @change="onTokiAgentPick($event.target.value)">
+                <option value="">（選んでください）</option>
+                <option v-for="c in agentCandidates" :key="c.id" :value="c.id">{{ c.label }}</option>
+                <option value="other">それ以外の人（司法書士・弁護士など）</option>
+              </select>
+            </div>
+            <div v-if="registration.agent.pick === 'other'" class="form-row">
+              <div class="form-group"><label>代理人の住所（事務所）</label><address-input v-model="registration.agent.address"></address-input></div>
+              <div class="form-group"><label>代理人の氏名</label><input type="text" v-model="registration.agent.name"></div>
+            </div>
+            <div v-else-if="registration.agent.pick" class="reg-note">代理人：{{ registration.agent.name }}　（住所：{{ registration.agent.address || '未入力' }}）　— 相続人の欄の氏名・住所が、そのまま入ります。</div>
+            <div class="form-row" style="align-items:flex-end;">
+              <div class="form-group">
+                <label>委任状の日付</label>
+                <date-input v-model="registration.delegationDate" data-tip="date_toki_ininjo" @copy="copyDateToAll"></date-input>
+              </div>
+              <button v-if="creator.isAgentMode" class="btn btn-outline btn-sm" style="margin-bottom:10px;" @click="copyAgentFromIchiranzu">法定相続情報一覧図の代理人と同じにする</button>
+            </div>
+          </template>
+        </div>
+
+        <template v-if="docEnabled.jusho">
+          <div class="section-title" style="margin-top:12px;">共有者である相続人の住所変更（更正）</div>
+          <div v-if="jushoPeople.length === 0" class="reg-note">「相続財産」で、被相続人の共有持分を相続する不動産に、すでに共有者として登記されている相続人を選ぶと、ここに表示されます。</div>
+          <div v-for="c in jushoPeople" :key="c.id" class="reg-card">
+            <div class="reg-card-title">{{ c.label }}　現在の住所：{{ c.person.addr || '未入力' }}</div>
+            <div class="form-row" style="align-items:flex-end;">
+              <div class="form-group">
+                <label>登記の種類</label>
+                <select :value="addrChangeInfo(c.person).kind" @change="setAddrChangeField(c.person, 'kind', $event.target.value)">
+                  <option value="change">住所変更（引っ越しなどで、住所が変わった）</option>
+                  <option value="correct">住所更正（もとの登記の住所が、誤っていた）</option>
+                </select>
+              </div>
+              <div v-if="addrChangeInfo(c.person).kind === 'change'" class="form-group">
+                <label>住所を移した日（住民票の異動日）</label>
+                <era-date :model-value="addrChangeInfo(c.person).moveDate" @update:model-value="setAddrChangeField(c.person, 'moveDate', $event)"></era-date>
+              </div>
+              <div v-else class="form-group">
+                <label>更正の原因</label>
+                <input type="text" :value="addrChangeInfo(c.person).cause" @input="setAddrChangeField(c.person, 'cause', $event.target.value)">
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <div v-if="applicantList.length > 0" class="section-title" style="margin-top:12px;">申請人（取得者）の情報</div>
+        <div v-for="a in applicantList" :key="a.id" class="reg-card">
+          <div class="reg-card-title">{{ a.role }} {{ a.name || '未入力' }}（生年月日：{{ a.birth || '未入力' }}）</div>
+          <div class="form-row">
+            <div class="form-group"><label>氏名ふりがな</label><input type="text" :value="applicantInfo(a).kana" @input="setApplicantField(a, 'kana', $event.target.value)" placeholder="ほうむ はなこ"></div>
+            <div class="form-group"><label>メールアドレス（なければ「なし」）</label><input type="text" :value="applicantInfo(a).email" @input="setApplicantField(a, 'email', $event.target.value)"></div>
+          </div>
+          <div class="form-row">
+            <div v-if="registration.useNationality" class="form-group"><label>国籍等</label><input type="text" :value="applicantInfo(a).nationality" @input="setApplicantField(a, 'nationality', $event.target.value)"></div>
+            <div class="form-group"><label>住民票コード（任意。この方の分を記載すると、この方の住民票の写し（住所証明情報）を省略できます）</label><input type="text" :value="applicantInfo(a).juminCode" @input="setApplicantField(a, 'juminCode', $event.target.value)"></div>
+          </div>
+        </div>
+
+        <div v-if="applications.length > 0" class="reg-note">
+          作成される登記申請書：<strong>{{ applications.length }}通</strong>
+          （<span v-for="(ap, ai) in applications" :key="ap.key">{{ ai ? '、' : '' }}{{ ap.pattern.name }}／{{ ap.office || '管轄未入力' }}（{{ ap.properties.length }}件）</span>）
+        </div>
+      </div>
+      </div>
+      </div>
+      <div v-show="activeInputTab === 'info'">
+      <!-- 作成者（相続人の誰かにチェックがあればその人、なければ代理人） -->
+      <div v-if="docEnabled.ichiranzu" class="section">
+        <div class="section-title">法定相続情報一覧図の作成日・作成者</div>
+        <div class="form-group">
+          <label>作成日</label>
+          <date-input v-model="creator.date" data-tip="date_ichiranzu" @copy="copyDateToAll"></date-input>
+        </div>
+        <div v-if="creatorPerson" class="reg-note">作成者：{{ creatorPerson.name || '未入力' }}（相続人の欄で選択しています。代理人の入力は不要です）</div>
+        <template v-else>
+          <div class="reg-note">相続人本人が作成する場合は、上の各相続人欄にある「作成者」にチェックを入れてください。チェックがない場合は、代理人（司法書士など）が作成者です。</div>
+          <div class="form-group">
+            <label>代理人（親族が代表して手続する場合は、入力済みの氏名から選べます）</label>
+            <select class="agent-pick" :value="creator.agentPick" @change="onCreatorAgentPick($event.target.value)">
+              <option value="">（選んでください）</option>
+              <option v-for="c in agentCandidates" :key="c.id" :value="c.id">{{ c.label }}</option>
+              <option value="other">それ以外の人（司法書士・弁護士など）</option>
+            </select>
+          </div>
+          <div v-if="creator.agentPick === 'other'" class="form-row">
+            <div class="form-group"><label>代理人の住所（事務所）</label><address-input v-model="creator.agentAddr"></address-input></div>
+            <div class="form-group"><label>代理人の氏名</label><input type="text" v-model="creator.agentName"></div>
+          </div>
+          <div v-else-if="creator.agentPick" class="reg-note">代理人：{{ creator.agentName }}　（住所：{{ creator.agentAddr || '未入力' }}）　— 相続人の欄の氏名・住所が、そのまま入ります。</div>
+        </template>
+      </div>
+
+      <!-- 申出書・委任状用の追加情報 -->
+      <div v-if="docEnabled.moshidesho" class="section">
+        <div class="section-title">申出書・委任状用の情報</div>
+        <div class="empty-state" style="text-align:left;">
+          申出人の氏名・住所は、上記の各相続人欄で「申出人」にチェックを入れた方の情報が自動的に使われます。現在の申出人：
+          <strong>{{ applicantPerson ? (applicantPerson.name || '未入力') : '（未選択）' }}</strong>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>申出年月日</label>
+            <date-input v-model="filing.applicationDate" :min-today="true" data-tip="date_moshidesho" @copy="copyDateToAll"></date-input>
+          </div>
+          <div class="form-group">
+            <label>申出人の連絡先（電話番号）</label>
+            <input type="text" v-model="filing.applicantContact" placeholder="090-0000-0000">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>利用目的（複数選択可）</label>
+          <div class="checkbox-group"><input type="checkbox" v-model="filing.purposeRealEstate" @change="onPurposeRealEstateChange"><label>不動産登記</label></div>
+          <div class="checkbox-group"><input type="checkbox" v-model="filing.purposeBankAccount"><label>預貯金の払戻し</label></div>
+          <div class="checkbox-group"><input type="checkbox" v-model="filing.purposeTax"><label>相続税の申告</label></div>
+          <div class="checkbox-group"><input type="checkbox" v-model="filing.purposePension"><label>年金等手続き</label></div>
+          <div class="checkbox-group">
+            <input type="checkbox" v-model="filing.purposeOtherChecked">
+            <label>その他（具体的な手続き名を記入）</label>
+          </div>
+          <input v-if="filing.purposeOtherChecked" type="text" v-model="filing.purposeOtherText" placeholder="例：株式の相続手続" style="margin-top:4px;">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>必要な写しの通数</label>
+            <input type="text" v-model="filing.copies" placeholder="1">
+          </div>
+          <div class="form-group">
+            <label>交付方法</label>
+            <select v-model="filing.deliveryMethod">
+              <option value="window">窓口で受取</option>
+              <option value="mail">郵送</option>
+            </select>
+          </div>
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" v-model="filing.hasRealEstate">
+          <label>被相続人名義の不動産がある</label>
+        </div>
+        <div v-if="filing.hasRealEstate" class="form-group">
+          <label>不動産所在事項又は不動産番号</label>
+          <input type="text" v-model="filing.realEstateInfo">
+        </div>
+        <div class="form-group">
+          <label>申出先登記所の種別</label>
+          <select v-model="filing.officeBasis">
+            <option value="honseki">被相続人の本籍地</option>
+            <option value="lastAddress">被相続人の最後の住所地</option>
+            <option value="applicantAddress">申出人の住所地</option>
+            <option v-if="filing.hasRealEstate" value="realEstate">被相続人名義の不動産の所在地</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>申出先登記所名</label>
+          <office-picker v-model="filing.officeName" :address="filingOfficeAddress"></office-picker>
+        </div>
+
+        <template v-if="creator.isAgentMode && docEnabled.ininjo">
+          <div class="section-title" style="margin-top:14px;">委任状用の情報</div>
+          <div class="empty-state" style="text-align:left;">
+            委任状の受任者（代理人）は、上の「作成者（代理人が作成する場合）」で入力した代理人の氏名・住所を使用します。
+          </div>
+          <div class="form-group">
+            <label>代理人の事務所住所（任意・法人等の場合）</label>
+            <input type="text" v-model="filing.agentOffice">
+          </div>
+          <div class="form-group">
+            <label>申出人との関係</label>
+            <select v-model="filing.agentRelation">
+              <option value="legal">法定代理人</option>
+              <option value="delegate">委任による代理人</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>委任事項</label>
+            <input type="text" v-model="filing.delegationMatter">
+          </div>
+          <div class="form-group">
+            <label>委任状の作成年月日</label>
+            <date-input v-model="filing.delegationDate" data-tip="date_ininjo" @copy="copyDateToAll"></date-input>
+          </div>
+        </template>
+      </div>
+
+      <!-- 遺産分割協議書の入力 -->
+      <div v-if="docEnabled.kyogisho" class="section">
+        <div class="section-title">遺産分割協議書の情報</div>
+        <div v-if="kyogishoAdvice.needed" class="reg-note">この被相続人では、遺産分割協議書が<strong>必要</strong>です。{{ kyogishoAdvice.reasons.join('。') }}。</div>
+        <div v-else class="reg-note">全員が法定相続分どおりに取得する場合は、遺産分割協議書は不要です（持分が未入力の組み合わせは、法定相続分とみなして判定しています）。</div>
+        <div class="form-group">
+          <label>遺産分割協議書の日付</label>
+          <date-input v-model="agreement.date" data-tip="date_kyogisho" @copy="copyDateToAll"></date-input>
+        </div>
+        <div class="form-group">
+          <label>本書に記載のない遺産・後日判明した遺産を取得する人（任意）</label>
+          <select v-model="agreement.futureHeirId">
+            <option value="">記載しない</option>
+            <option v-for="h in kyogishoSigners" :key="h.id" :value="h.id">{{ h.name || '未入力' }}</option>
+          </select>
+        </div>
+      </div>
+
+      </div>
+
+      <!-- 個体・履歴（人物と不動産を、手続をまたいで個体として管理し、時系列の履歴を残す） -->
+      <div v-if="activeInputTab === 'ledger' && ledgerView" class="ledger-tab">
+        <div class="section">
+          <div class="section-title">人物（被相続人・相続人）</div>
+          <div class="reg-note">手続をまたいで、同じ人は同じ人として管理します（被相続人を追加するときに、同じ人を引き継ぎます）。転居・改姓などは、日付をつけて履歴に残せます。</div>
+          <div v-if="ledgerView.candidates.length" class="reg-card ledger-candidates">
+            <div class="reg-card-title">同じ人かもしれません（氏名と生年月日が同じ）</div>
+            <div v-for="c in ledgerView.candidates" :key="c.key" class="coowner-row">
+              <span>{{ c.a.name }}（{{ c.a.birth }}）：{{ c.a.appearances.map(x => x.caseLabel + ' ' + x.role).join('、') }} ／ {{ c.b.appearances.map(x => x.caseLabel + ' ' + x.role).join('、') }}</span>
+              <button class="btn btn-primary btn-sm" @click="ledgerMerge(c.a.pid, c.b.pid)">同じ人としてまとめる</button>
+              <button class="btn btn-outline btn-sm" @click="ledgerNotSame(c.key)">別の人</button>
+            </div>
+          </div>
+          <details v-for="p in ledgerView.people" :key="p.pid" class="reg-card ledger-person">
+            <summary><strong>{{ p.name }}</strong>　{{ p.birth }}　〔{{ p.appearances.length }}件の手続に登場〕<span v-if="p.conflicts.length" class="reg-warn" style="margin-left:6px;">⚠ 手続によって入力が違います</span></summary>
+            <div style="overflow-x:auto;">
+              <table class="alloc-table">
+                <tr><th>手続（被相続人）</th><th>役割</th><th>氏名</th><th>生年月日</th><th>死亡年月日</th><th>住所</th></tr>
+                <tr v-for="(a, i) in p.appearances" :key="i">
+                  <td>{{ a.caseLabel }}</td><td>{{ a.role }}</td><td>{{ a.name }}</td><td>{{ a.birth }}</td><td>{{ a.death }}</td><td>{{ a.addr }}</td>
+                </tr>
+              </table>
+            </div>
+            <div v-for="c in p.conflicts" :key="c.field" class="reg-note reg-warn">
+              {{ c.label }}が、手続によって違います。そろえるときは、正しいほうを選んでください：
+              <button v-for="v in c.values" :key="v" class="btn btn-outline btn-sm" style="margin:2px;" @click="ledgerUnify(p.pid, c.field, v)">「{{ v }}」にそろえる</button>
+            </div>
+            <div class="reg-card-title" style="margin-top:10px;">時系列</div>
+            <table class="alloc-table ledger-timeline">
+              <tr v-for="(t, i) in p.timeline" :key="i"><td style="white-space:nowrap;">{{ t.date }}</td><td>{{ t.label }}<span v-if="t.auto" class="ledger-auto">（入力から自動）</span></td></tr>
+              <tr v-if="!p.timeline.length"><td colspan="2">まだありません。</td></tr>
+            </table>
+            <div class="reg-card-title" style="margin-top:10px;">履歴の入力（転居・改姓など）</div>
+            <div v-for="h in p.history" :key="h.id" class="form-row ledger-entry">
+              <div class="form-group" style="max-width:130px;">
+                <label>種類</label>
+                <select v-model="h.kind"><option value="address">住所変更</option><option value="name">氏名変更</option><option value="other">その他</option></select>
+              </div>
+              <div class="form-group">
+                <label>日付</label>
+                <era-date :model-value="h.date" kind="death" @update:modelValue="h.date = $event"></era-date>
+              </div>
+              <div class="form-group">
+                <label>{{ h.kind === 'address' ? '新しい住所' : h.kind === 'name' ? '新しい氏名' : '内容' }}</label>
+                <input type="text" v-model="h.value">
+              </div>
+              <div class="form-group">
+                <label>備考（任意）</label>
+                <input type="text" v-model="h.note" placeholder="例：婚姻、転居">
+              </div>
+              <div class="form-group" style="align-self:flex-end;"><button class="btn btn-danger btn-sm" @click="ledgerRemoveHistory(p.pid, h.id)">削除</button></div>
+            </div>
+            <div class="toolbar" style="margin-bottom:0;">
+              <button class="btn btn-outline btn-sm" @click="ledgerAddHistory(p.pid, 'address')">＋ 住所変更</button>
+              <button class="btn btn-outline btn-sm" @click="ledgerAddHistory(p.pid, 'name')">＋ 氏名変更</button>
+              <button class="btn btn-outline btn-sm" @click="ledgerAddHistory(p.pid, 'other')">＋ その他</button>
+              <button v-if="p.history.some(h => h.kind === 'address' && h.value)" class="btn btn-primary btn-sm" @click="ledgerApplyAddress(p.pid)">履歴の住所を、各手続に反映</button>
+              <button v-if="p.appearances.length > 1" class="btn btn-outline btn-sm" @click="ledgerSyncApplicant(p.pid)">申請人情報を、ほかの手続からそろえる</button>
+            </div>
+          </details>
+          <div v-if="!ledgerView.people.length" class="reg-note">人物がまだ入力されていません。</div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">不動産（土地・建物）</div>
+          <div class="reg-note">相続財産に入力した土地・建物を、個体として管理します。被相続人を追加するとき、その人が取得する不動産は、同じ不動産として引き継がれます。名義の流れは、被相続人の死亡日の順に並びます（売買など、手続にない変動は、下で履歴として入力します）。</div>
+          <div v-if="!ledgerView.estates.length" class="reg-note">相続財産に、不動産がまだ入力されていません。</div>
+          <details v-for="e in ledgerView.estates" :key="e.id" class="reg-card ledger-estate">
+            <summary><strong>{{ e.kindLabel }}　{{ e.title }}</strong>　〔{{ e.appearances.length }}件の手続〕<span v-if="e.warnings.length" class="reg-warn" style="margin-left:6px;">⚠ 前の手続と合わない点があります</span></summary>
+            <div v-for="(w, i) in e.warnings" :key="i" class="reg-note reg-warn">{{ w }}</div>
+            <div class="reg-card-title" style="margin-top:6px;">名義の流れ（時系列）</div>
+            <table class="alloc-table ledger-timeline">
+              <tr v-for="(t, i) in e.timeline" :key="i"><td style="white-space:nowrap;">{{ t.date }}</td><td>{{ t.label }}<span v-if="t.auto" class="ledger-auto">（手続の入力から自動）</span></td></tr>
+            </table>
+            <div class="reg-card-title" style="margin-top:10px;">履歴の入力（売買・贈与など、手続にない変動）</div>
+            <div v-for="ev in e.events" :key="ev.id" class="form-row ledger-entry">
+              <div class="form-group" style="max-width:170px;">
+                <label>原因</label>
+                <select v-model="ev.cause"><option v-for="c in ledgerCauses" :key="c" :value="c">{{ c }}</option></select>
+              </div>
+              <div class="form-group">
+                <label>日付</label>
+                <era-date :model-value="ev.date" kind="death" @update:modelValue="ev.date = $event"></era-date>
+              </div>
+              <div class="form-group">
+                <label>内容（任意）</label>
+                <input type="text" v-model="ev.text" placeholder="例：〇〇から〇〇へ売買">
+              </div>
+              <div class="form-group" style="align-self:flex-end;"><button class="btn btn-danger btn-sm" @click="ledgerRemoveEvent(e.id, ev.id)">削除</button></div>
+            </div>
+            <div class="toolbar" style="margin-bottom:0;"><button class="btn btn-outline btn-sm" @click="ledgerAddEvent(e.id)">＋ 履歴を追加</button></div>
+          </details>
+        </div>
+      </div>
+    </div>
+
+    <!-- プレビュー画面 -->
+    <div v-if="currentView === 'preview'" class="view">
+      <div class="toolbar">
+        <button class="btn btn-outline btn-large" @click="backToInput">← 入力欄に戻る</button>
+        <label v-if="docType === 'setsumeizu'" class="copies-toolbar">印刷通数
+          <input type="number" min="1" max="99" class="copies-input" v-model.number="docs.setsumeizuCopies" @blur="docs.setsumeizuCopies = clampCopies(docs.setsumeizuCopies)"> 通ずつ
+        </label>
+        <label v-else-if="docType === 'kyogisho'" class="copies-toolbar">印刷通数
+          <input type="number" min="1" max="99" class="copies-input" v-model.number="docs.kyogishoCopies" @blur="docs.kyogishoCopies = clampCopies(docs.kyogishoCopies)"> 通
+        </label>
+        <button class="btn btn-success btn-large" @click="printDiagram">{{ printCopies > 1 ? '印刷（' + printCopies + '通）' : '印刷' }}</button>
+        <select v-if="docType === 'setsumeizu' && successorPatterns.length > 1" :value="activePatternId"
+                @change="changePreviewPattern($event.target.value)" style="align-self:center; padding:6px 8px;">
+          <option v-for="pt in successorPatterns" :key="pt.id" :value="pt.id">{{ pt.name }}</option>
+        </select>
+      </div>
+      <div v-if="(docType === 'ichiranzu' || docType === 'setsumeizu') && totalPages > 1" class="toolbar" style="margin-top:-8px;">
+        <button class="btn btn-outline btn-sm" :disabled="currentPage === 0" @click="prevPage">← 前のページ</button>
+        <span style="align-self:center; font-size:13px; color:var(--text-secondary);">{{ currentPage + 1 }} / {{ totalPages }} ページ</span>
+        <button class="btn btn-outline btn-sm" :disabled="currentPage === totalPages - 1" @click="nextPage">次のページ →</button>
+      </div>
+      <div class="preview-container">
+        <!-- 法定相続情報一覧図・相続関係説明図（SVG、複数ページ分） -->
+        <div v-if="docType === 'ichiranzu' || docType === 'setsumeizu'">
+          <div v-for="(page, idx) in renderedPages" :key="idx" class="paper" v-show="idx === currentPage" :class="{ 'print-page': true }">
+            <svg :id="'chart-' + idx" viewBox="0 0 694 890" xmlns="http://www.w3.org/2000/svg"></svg>
+          </div>
+        </div>
+
+        <!-- 申出書（HTML） -->
+        <div v-else-if="docType === 'moshidesho'" class="paper doc-paper">
+          <div class="doc-title">法定相続情報一覧図の保管及び交付の申出書</div>
+          <div class="doc-subtitle">（補完年月日　令和　　年　　月　　日）</div>
+          <table class="moshidesho-table">
+            <tr>
+              <th>申出年月日</th>
+              <td><span data-tip="date_moshidesho">{{ filing.applicationDate }}</span>　　　　法定相続情報番号　　－　　－</td>
+            </tr>
+            <tr>
+              <th>被相続人の表示</th>
+              <td>
+                氏名　{{ deceased.name }}<br>
+                最後の住所　{{ deceased.lastAddr }}<br>
+                生年月日　{{ deceased.birth }}　　死亡年月日　{{ deceased.death }}
+              </td>
+            </tr>
+            <tr>
+              <th>申出人の表示</th>
+              <td>
+                住所　{{ applicantPerson ? applicantPerson.addr : '（相続人欄で「申出人」を選択してください）' }}<br>
+                氏名　<span class="tip-target" data-tip="seal_moshidesho">{{ applicantPerson ? applicantPerson.name : '' }}</span><br>
+                連絡先　{{ filing.applicantContact }}<br>
+                被相続人との続柄　（　{{ applicantPerson ? applicantPerson.role.replace(/[（）]/g,'') : '' }}　）
+              </td>
+            </tr>
+            <tr v-if="creator.isAgentMode">
+              <th>代理人の表示</th>
+              <td>
+                住所（事務所）　{{ filing.agentOffice || creator.agentAddr }}<br>
+                氏名　<span class="tip-target" data-tip="seal_moshidesho">{{ creator.agentName }}</span><br>
+                連絡先<br>
+                申出人との関係　{{ filing.agentRelation === 'legal' ? '☑' : '□' }}法定代理人　{{ filing.agentRelation === 'delegate' ? '☑' : '□' }}委任による代理人
+              </td>
+            </tr>
+            <tr>
+              <th>利用目的</th>
+              <td>
+                {{ filing.purposeRealEstate ? '☑' : '□' }}不動産登記　　{{ filing.purposeBankAccount ? '☑' : '□' }}預貯金の払戻し<br>
+                {{ filing.purposePension ? '☑' : '□' }}年金等手続き　　{{ filing.purposeTax ? '☑' : '□' }}相続税の申告<br>
+                {{ filing.purposeOtherChecked ? '☑' : '□' }}その他（　{{ filing.purposeOtherText }}　）
+              </td>
+            </tr>
+            <tr>
+              <th>必要な写しの通数<br>・交付方法</th>
+              <td>
+                {{ filing.copies }}通　　（{{ filing.deliveryMethod === 'window' ? '☑窓口で受取　□郵送' : '□窓口で受取　☑郵送' }}）
+              </td>
+            </tr>
+            <tr>
+              <th>被相続人名義の<br>不動産の有無</th>
+              <td>
+                {{ filing.hasRealEstate ? '☑有' : '□有' }}　（有の場合、不動産所在事項又は不動産番号を以下に記載）<br>
+                {{ !filing.hasRealEstate ? '☑無' : '□無' }}　{{ filing.hasRealEstate ? filing.realEstateInfo : '' }}
+              </td>
+            </tr>
+            <tr>
+              <th>申出先登記所の種別</th>
+              <td>
+                {{ filing.officeBasis === 'honseki' ? '☑' : '□' }}被相続人の本籍地　　{{ filing.officeBasis === 'lastAddress' ? '☑' : '□' }}被相続人の最後の住所地<br>
+                {{ filing.officeBasis === 'applicantAddress' ? '☑' : '□' }}申出人の住所地　　{{ filing.officeBasis === 'realEstate' ? '☑' : '□' }}被相続人名義の不動産の所在地
+              </td>
+            </tr>
+            <tr class="no-print">
+              <th>添付書類</th>
+              <td><span class="tip-target" data-tip="att_moshide">ℹ 添付書類の原本の返却・保管期間について（カーソルを重ねて確認）</span></td>
+            </tr>
+          </table>
+          <p class="doc-note">
+            上記被相続人の法定相続情報一覧図を別添のとおり提出し、上記通数の法定相続情報一覧図の写しの交付を申出します。交付を受けた法定相続情報一覧図の写しについては、被相続人の死亡に起因する相続手続及び年金等手続においてのみ使用し、その他の用途には使用しません。<br>
+            申出の日から3か月以内に法定相続情報一覧図の写し及び返却書類を受け取らない場合は、廃棄して差し支えありません。
+          </p>
+          <p class="doc-office">
+            {{ filing.officeName || '〇〇（地方）法務局　〇〇支局・出張所' }}　　宛
+          </p>
+        </div>
+
+        <!-- 委任状（HTML） -->
+        <!-- 登記申請書（相続による所有権移転／持分移転）。(相続パターン × 管轄登記所)ごとに1通 -->
+        <div v-else-if="docType === 'touki'">
+          <div v-if="applications.length === 0" class="paper doc-paper">
+            <div class="doc-note">登記申請書の対象となる不動産が入力されていません。入力画面の「不動産」で不動産を追加してください。</div>
+          </div>
+          <div v-for="(ap, ai) in applications" :key="ap.key" class="paper doc-paper print-page">
+            <div class="doc-title">登 記 申 請 書</div>
+            <div class="doc-note no-print" style="text-align:right;">（{{ ai + 1 }}／{{ applications.length }}通　{{ ap.pattern.name }}）</div>
+            <div v-if="ap.shareStatus.needed && !ap.shareStatus.ok" class="doc-note no-print" style="color:var(--danger);">⚠ 持分の合計が 1 になっていません。入力画面の「相続パターン」を確認してください。</div>
+            <div v-if="ap.causeLines.length > 1" class="doc-note no-print">数次相続で、中間の相続人（亡くなった方）を省略して、最終の相続人へ直接申請する書き方です。原因欄は、最初の被相続人の死亡日と中間の相続人の氏名、続けて中間の相続人の死亡日の順に書きます（法務局の記載例）。</div>
+            <div v-if="ap.hasDeadOwner" class="doc-note no-print" style="color:var(--danger);">⚠ 亡くなった相続人（亡〇〇）も名義人にする登記申請書です。亡くなった方の名義にする登記の書き方は、管轄の法務局で確認してください。続けて、その方の持分を相続人へ移す登記申請書（「○○持分全部移転」）も申請します。</div>
+            <div v-if="ap.isStep2" class="doc-note no-print">この登記申請書は、亡{{ ap.decedentName }}の持分を、その相続人へ移す登記申請書です。亡{{ ap.decedentName }}を名義人にする登記申請書と合わせて提出します。</div>
+            <table class="moshidesho-table">
+              <tr><th>登記の目的</th><td>{{ ap.purpose }}</td></tr>
+              <tr><th>原　　因</th><td><template v-for="(ln, li) in ap.causeLines" :key="li">{{ ln }}<br></template></td></tr>
+              <tr>
+                <th>相 続 人</th>
+                <td>
+                  （被相続人　{{ ap.decedentName }}）
+                  <div v-for="a in ap.owners" :key="a.id" class="touki-person">
+                    <template v-if="isDeadOwner(a)">
+                      {{ a.addr }}<br>
+                      <template v-if="acqShareLabel(ap, a)">{{ acqShareLabel(ap, a) }}　</template>亡 {{ a.name }}（{{ a.death }}死亡）<br>
+                    </template>
+                    <template v-else>
+                    {{ a.addr }}<br>
+                    <template v-if="applicantInfo(a).juminCode">（住民票コード{{ applicantInfo(a).juminCode }}）<br></template>
+                    （申請人）<template v-if="acqShareLabel(ap, a)">{{ acqShareLabel(ap, a) }}　</template>
+                    <template v-if="hasLegalRep(a)">
+                      <span class="tip-target" :data-tip="applicantInfo(a).status === 'minor' ? 'legal_minor' : 'legal_ward'">{{ legalLabel(applicantInfo(a).status) }}</span>　{{ a.name }}<br>
+                      　　　上記法定代理人　{{ applicantInfo(a).repRole }}<br>
+                      　　　{{ applicantInfo(a).repAddr }}<br>
+                      　　　{{ applicantInfo(a).repName }}<template v-if="!registration.agent.enabled">　<span class="seal-mark" data-tip="seal_toki">印</span></template><br>
+                    </template>
+                    <template v-else>{{ a.name }}<template v-if="!registration.agent.enabled">　<span class="seal-mark" data-tip="seal_toki">印</span></template><br></template>
+                    <span class="touki-sub">氏名ふりがな　{{ applicantInfo(a).kana }}<br>
+                    生年月日　{{ a.birth }}<br>
+                    <template v-if="registration.useNationality">国籍等　{{ applicantInfo(a).nationality }}<br></template>
+                    メールアドレス　{{ applicantInfo(a).email || 'なし' }}</span>
+                    </template>
+                  </div>
+                  <div v-if="ap.owners.length === 0" class="touki-person">（相続人が選択されていません）</div>
+                  <div class="touki-person">連絡先の電話番号　{{ registration.contact }}</div>
+                </td>
+              </tr>
+              <tr v-if="registration.agent.enabled">
+                <th>代 理 人</th>
+                <td>{{ registration.agent.address }}<br>{{ registration.agent.name }}　<span class="seal-mark" data-tip="seal_toki_agent">印</span></td>
+              </tr>
+              <tr>
+                <th>添付情報</th>
+                <td>
+                  <span class="tip-target" data-tip="att_genin">登記原因証明情報</span>{{ registration.lawNumber ? '（法定相続情報番号 ' + registration.lawNumber + '）' : '' }}
+                  <template v-if="!ap.allJumin">　<span class="tip-target" data-tip="att_jusho">住所証明情報</span><template v-if="ap.juminPartial">（{{ ap.juminMissingNames.join('、') }}の分）</template></template>
+                  <template v-if="registration.useNationality">　<span class="tip-target" data-tip="att_kokuseki">国籍等を証する情報</span></template>
+                  <template v-if="registration.agent.enabled || ap.hasLegalRep">　<span class="tip-target" data-tip="att_dairi">代理権限証明情報</span></template>
+                </td>
+              </tr>
+              <tr><th></th><td>{{ registration.noIdentifier ? '☑' : '□' }}登記識別情報の通知を希望しません。</td></tr>
+              <tr>
+                <th>申請年月日・<br>登記所</th>
+                <td><span data-tip="date_toki">{{ registration.applicationDate }}申請</span>　{{ ap.office || '〇〇法務局（又は地方法務局）〇〇支局（又は出張所）' }}</td>
+              </tr>
+              <tr v-if="!ap.tax.allExempt">
+                <th><span class="tip-target" data-tip="att_hyoka">課税価格</span></th>
+                <td>{{ ap.tax.unknown ? '金〇円（評価額・持分が未入力の不動産があります）' : '金' + yen(ap.tax.base) + '円' }}</td>
+              </tr>
+              <tr>
+                <th><span class="tip-target" data-tip="tax_exempt">登録免許税</span></th>
+                <td>
+                  <template v-if="ap.tax.unknown">金〇円</template>
+                  <template v-else-if="ap.tax.allExempt">{{ exemptClauseText(ap.tax) }}</template>
+                  <template v-else>金{{ yen(ap.tax.tax) }}円</template>
+                  <div v-if="!ap.tax.unknown && !ap.tax.allExempt && ap.tax.exemptProps.length > 0" class="doc-note">
+                    ※ 租税特別措置法第84条の2の3第2項により非課税の土地（課税価格に含めていません）：{{ ap.tax.exemptProps.map(x => x.location + ' ' + x.lotNo).join('、') }}
+                  </div>
+                  <div v-if="!ap.tax.unknown && !ap.tax.allExempt && ap.tax.clause1Props.length > 0" class="doc-note">
+                    ※ 租税特別措置法第84条の2の3第1項により、亡くなった相続人の名義にする分は非課税（課税価格に含めていません）：{{ ap.tax.clause1Props.map(x => x.location + ' ' + x.lotNo).join('、') }}
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <th>不動産の表示</th>
+                <td>
+                  <div v-for="pr in ap.properties" :key="pr.id" class="touki-prop">
+                    <template v-for="(ln, li) in propertyLines(pr)" :key="li">{{ ln }}<br></template>
+                    <template v-if="propertyShareText(ap, pr)">{{ propertyShareText(ap, pr) }}<br></template>
+                  </div>
+                </td>
+              </tr>
+            </table>
+            <div class="doc-note no-print" style="margin-top:8px;">課税価格の内訳（印刷されません）：<template v-for="l in ap.taxLines" :key="l.id"><br>・{{ l.name }}　{{ l.text || '（評価額が未入力です）' }}{{ l.exempt ? '　→ 非課税（100万円以下の土地）' : '' }}</template></div>
+            <div class="doc-note no-print" data-tip="keiin" style="margin-top:8px;">ℹ 複数枚になる場合の契印について（カーソルを重ねて確認）</div>
+            <div v-if="docEnabled.setsumeizu" class="doc-note no-print">
+              添付する相続関係説明図：「{{ ap.pattern.name }}」（この登記申請書の申請人と、相続関係説明図の〔相続人〕は一致します）
+              <button class="btn btn-outline btn-sm" @click="openDiagramForApplication(ap)">相続関係説明図を表示</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 登記申請の委任状（委任者は法定相続情報一覧図の申出人ではなく、登記の申請人）。登記申請書1通につき1通 -->
+        <div v-else-if="docType === 'toukiIninjo'">
+          <div v-if="applications.length === 0" class="paper doc-paper">
+            <div class="doc-note">対象の不動産が入力されていません。入力画面の「不動産」で追加してください。</div>
+          </div>
+          <div v-for="(ap, ai) in applications" :key="ap.key" class="paper doc-paper print-page">
+            <div class="doc-title">委 任 状</div>
+            <div class="doc-note no-print" style="text-align:right;">（{{ ai + 1 }}／{{ applications.length }}通　登記申請書{{ ai + 1 }}に対応）</div>
+            <p class="kyo-p" style="text-align:right;" data-tip="date_toki_ininjo">{{ registration.delegationDate }}</p>
+            <p class="kyo-p">私は、{{ registration.agent.address }}　{{ registration.agent.name }}　を代理人と定め、次の権限を委任します。</p>
+            <p class="kyo-p">
+              １　下記の登記に関し、登記申請書を作成すること及び当該登記の申請に必要な書面と共に登記申請書を管轄登記所に提出すること<br>
+              ２　登記が完了した後に通知される登記識別情報通知書及び登記完了証を受領すること<br>
+              ３　登記の申請に不備がある場合に、当該登記の申請を取下げ、又は補正すること<br>
+              ４　登記に係る登録免許税の還付金を受領すること<br>
+              ５　上記１から４までのほか、下記の登記の申請に関し必要な一切の権限
+            </p>
+            <div v-for="a in ap.acquirers" :key="a.id" class="touki-person">
+              <span v-if="a === ap.acquirers[0]">委任者　</span>{{ a.addr }}<br>
+              <template v-if="hasLegalRep(a)">
+                {{ legalLabel(applicantInfo(a).status) }}　{{ a.name }}<br>
+                上記法定代理人　{{ applicantInfo(a).repRole }}<br>
+                {{ applicantInfo(a).repAddr }}<br>
+                {{ applicantInfo(a).repName }}　<span class="seal-mark" data-tip="seal_toki_ininjo">印</span>
+              </template>
+              <template v-else>{{ a.name }}　<span class="seal-mark" data-tip="seal_toki_ininjo">印</span></template>
+            </div>
+            <p class="kyo-p" style="text-align:center;">記</p>
+            <table class="moshidesho-table">
+              <tr><th>登記の目的</th><td>{{ ap.purpose }}</td></tr>
+              <tr><th>原　　因</th><td><template v-for="(ln, li) in ap.causeLines" :key="li">{{ ln }}<br></template></td></tr>
+              <tr>
+                <th>相 続 人</th>
+                <td>
+                  （被相続人　{{ ap.decedentName }}）
+                  <div v-for="a in ap.owners" :key="a.id" class="touki-person">
+                    {{ a.addr }}<br>
+                    <template v-if="acqShareLabel(ap, a)">{{ acqShareLabel(ap, a) }}　</template>{{ ownerName(a) }}
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <th>不動産の表示</th>
+                <td>
+                  <div v-for="pr in ap.properties" :key="pr.id" class="touki-prop">
+                    <template v-for="(ln, li) in propertyLines(pr)" :key="li">{{ ln }}<br></template>
+                    <template v-if="propertyShareText(ap, pr)">{{ propertyShareText(ap, pr) }}<br></template>
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </div>
+        </div>
+
+        <!-- 遺産分割協議書。分割する不動産は登記申請書の不動産と同じ -->
+        <!-- 共有者である相続人の住所変更（更正）登記申請書。相続登記より先に、続けて申請する。代理人に依頼するときは、委任状も付ける -->
+        <div v-else-if="docType === 'jusho'">
+          <div v-if="jushoApplications.length === 0" class="paper doc-paper">
+            <div class="doc-note">住所変更（更正）の対象がありません。入力画面の「相続財産」で、共有持分を相続する不動産に、すでに共有者として登記されている相続人を選んでください。</div>
+          </div>
+          <template v-for="(ja, ji) in jushoApplications" :key="ja.key">
+            <div class="paper doc-paper print-page">
+              <div class="doc-title">登 記 申 請 書</div>
+              <div class="doc-note no-print" style="text-align:right;">（{{ ji + 1 }}／{{ jushoApplications.length }}通　{{ ja.person.name }}の住所{{ ja.kind === 'correct' ? '更正' : '変更' }}）</div>
+              <div class="doc-note no-print">相続登記の申請書より先に、続けて（連件で）提出します。<template v-if="ja.kind === 'correct'">住所更正は、登記簿の住所が誤っていたときの登記です。同じ人であることを示す書類が、さらに必要になることがあるので、管轄の法務局で確認してください。</template></div>
+              <table class="moshidesho-table">
+                <tr><th>登記の目的</th><td>{{ ja.purpose }}</td></tr>
+                <tr><th>原　　因</th><td>{{ ja.cause }}</td></tr>
+                <tr><th>{{ ja.afterLabel }}</th><td>共有者　住所　{{ ja.person.addr }}</td></tr>
+                <tr>
+                  <th>申 請 人</th>
+                  <td>
+                    （登記名義人）<br>{{ ja.person.addr }}<br>{{ ja.person.name }}<template v-if="!registration.agent.enabled">　<span class="seal-mark" data-tip="seal_toki">印</span></template><br>
+                    連絡先の電話番号　{{ registration.contact }}
+                  </td>
+                </tr>
+                <tr v-if="registration.agent.enabled">
+                  <th>代 理 人</th>
+                  <td>{{ registration.agent.address }}<br>{{ registration.agent.name }}　<span class="seal-mark" data-tip="seal_toki_agent">印</span></td>
+                </tr>
+                <tr>
+                  <th>添付情報</th>
+                  <td><span class="tip-target" data-tip="att_genin">登記原因証明情報</span>（住民票の写しなど）<template v-if="registration.agent.enabled">　<span class="tip-target" data-tip="att_dairi">代理権限証明情報</span></template></td>
+                </tr>
+                <tr>
+                  <th>申請年月日・<br>登記所</th>
+                  <td><span data-tip="date_toki">{{ registration.applicationDate }}申請</span>　{{ ja.office || '〇〇法務局（又は地方法務局）〇〇支局（又は出張所）' }}</td>
+                </tr>
+                <tr><th><span class="tip-target" data-tip="tax_general">登録免許税</span></th><td>金{{ yen(ja.tax) }}円（不動産{{ ja.properties.length }}個 × 1,000円）</td></tr>
+                <tr>
+                  <th>不動産の表示</th>
+                  <td>
+                    <div v-for="pr in ja.properties" :key="pr.id" class="touki-prop">
+                      <template v-for="(ln, li) in propertyLines(pr)" :key="li">{{ ln }}<br></template>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <div v-if="registration.agent.enabled" class="paper doc-paper print-page">
+              <div class="doc-title">委 任 状</div>
+              <div class="doc-note no-print" style="text-align:right;">（{{ ji + 1 }}／{{ jushoApplications.length }}通　上の登記申請書に対応）</div>
+              <p class="kyo-p" style="text-align:right;" data-tip="date_toki_ininjo">{{ registration.delegationDate }}</p>
+              <p class="kyo-p">私は、{{ registration.agent.address }}　{{ registration.agent.name }}　を代理人と定め、次の権限を委任します。</p>
+              <p class="kyo-p">
+                １　下記の登記に関し、登記申請書を作成すること及び当該登記の申請に必要な書面と共に登記申請書を管轄登記所に提出すること<br>
+                ２　登記が完了した後に通知される登記完了証を受領すること<br>
+                ３　登記の申請に不備がある場合に、当該登記の申請を取下げ、又は補正すること<br>
+                ４　登記に係る登録免許税の還付金を受領すること<br>
+                ５　上記１から４までのほか、下記の登記の申請に関し必要な一切の権限
+              </p>
+              <div class="touki-person">委任者　{{ ja.person.addr }}<br>{{ ja.person.name }}　<span class="seal-mark" data-tip="seal_toki_ininjo">印</span></div>
+              <p class="kyo-p" style="text-align:center;">記</p>
+              <table class="moshidesho-table">
+                <tr><th>登記の目的</th><td>{{ ja.purpose }}</td></tr>
+                <tr><th>原　　因</th><td>{{ ja.cause }}</td></tr>
+                <tr>
+                  <th>不動産の表示</th>
+                  <td>
+                    <div v-for="pr in ja.properties" :key="pr.id" class="touki-prop">
+                      <template v-for="(ln, li) in propertyLines(pr)" :key="li">{{ ln }}<br></template>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+          </template>
+        </div>
+
+        <div v-else-if="docType === 'kyogisho'" class="paper doc-paper">
+          <div class="doc-title">遺 産 分 割 協 議 書</div>
+          <div v-for="g in kyogishoGroups" :key="g.pattern.id">
+            <div v-if="g.shareStatus.needed && !g.shareStatus.ok" class="doc-note no-print" style="color:var(--danger);">⚠ 「{{ g.pattern.name }}」の持分の合計が 1 になっていません。</div>
+          </div>
+          <div v-for="w in legalWarnings" :key="w.text" class="doc-note no-print" style="color:var(--danger);">⚠ {{ w.text }}</div>
+          <p class="kyo-p">{{ deceased.death }}、{{ deceased.lastAddr }} {{ deceased.name }} の死亡によって開始した相続の共同相続人である{{ joinNames(kyogishoSigners.map(h => h.name || '〇〇')) }}は、本日、その相続財産について、次のとおり遺産分割の協議を行った。</p>
+          <div v-if="kyogishoGroups.length === 0" class="doc-note">分割する不動産が入力されていません。入力画面の「不動産」で追加してください。</div>
+          <div v-for="(g, gi) in kyogishoGroups" :key="g.pattern.id" class="kyo-article">
+            <p class="kyo-p">{{ zen(gi + 1) }}　相続財産のうち、下記の{{ kyoKindWord(g) }}は、{{ acquirerText(g) }}が相続する。</p>
+            <div v-for="pr in g.properties" :key="pr.id" class="touki-prop">
+              <template v-for="(ln, li) in propertyLines(pr)" :key="li">{{ ln }}<br></template>
+              <template v-if="pr.rightKind === 'share'">{{ kyoShareNote(g, pr) }}<br></template>
+            </div>
+          </div>
+          <p v-if="kyogishoNos.other" class="kyo-p">{{ zen(kyogishoNos.other) }}　{{ agreement.otherAssets }}</p>
+          <p v-if="kyogishoNos.future" class="kyo-p">{{ zen(kyogishoNos.future) }}　上記以外の遺産及び後日判明した遺産は、{{ futureHeirName() }}が相続する。</p>
+          <p class="kyo-p">この協議を証するため、本遺産分割協議書を{{ zen(kyogishoSigners.length) }}通作成して、それぞれに署名、押印し、各自１通を保有するものとする。</p>
+          <p class="kyo-p" data-tip="date_kyogisho">{{ agreement.date }}</p>
+          <div v-for="sg in kyogishoSignerList" :key="sg.person.id" class="touki-person">
+            {{ sg.person.addr }}<br>
+            <template v-if="sg.info.status === 'minor' || sg.info.status === 'ward'">
+              {{ legalLabel(sg.info.status) }}　{{ sg.person.name }}<br>
+              <span class="tip-target" data-tip="legal_rep_kyogisho">上記法定代理人　{{ sg.info.repRole }}</span><br>
+              {{ sg.info.repAddr }}<br>
+              {{ sg.info.repName }}　<span class="seal-mark" data-tip="seal_kyogisho">実印</span>
+            </template>
+            <template v-else>{{ sg.person.name }}　<span class="seal-mark" data-tip="seal_kyogisho">実印</span></template>
+          </div>
+        </div>
+
+        <div v-else-if="docType === 'ininjo'" class="paper doc-paper">
+          <div class="doc-title" style="margin-bottom:30px;">委任状</div>
+          <p style="text-align:right;" data-tip="date_ininjo">{{ filing.delegationDate }}</p>
+          <p style="margin:20px 0;">私は、下記の者を代理人と定め、下記委任事項に関する一切の権限を委任します。</p>
+          <div class="ininjo-block">
+            <div class="ininjo-block-title">代理人</div>
+            <div>住所　{{ filing.agentOffice || creator.agentAddr || '（未入力）' }}</div>
+            <div>氏名　{{ creator.agentName || '（未入力）' }}</div>
+          </div>
+          <div class="ininjo-block">
+            <div class="ininjo-block-title">委任事項</div>
+            <div>一、{{ filing.delegationMatter }}</div>
+          </div>
+          <div class="ininjo-block">
+            <div class="ininjo-block-title">委任者</div>
+            <div>住所　{{ applicantPerson ? applicantPerson.addr : '（相続人欄で「申出人」を選択してください）' }}</div>
+            <div>氏名　{{ applicantPerson ? applicantPerson.name : '' }}　　　　　　　　　　<span class="seal-mark" data-tip="seal_ininjo">㊞</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 相続人にならない方がいるときの注意（死亡年月日などを入力した結果） -->
+  <div v-if="notice.open" class="modal-backdrop" role="alertdialog" aria-modal="true" :aria-label="notice.title" @click.self="closeNotice">
+    <div class="modal-box help-modal">
+      <div class="modal-title">⚠ {{ notice.title }}</div>
+      <ul class="modal-list"><li v-for="(l, i) in notice.lines" :key="i">{{ l }}</li></ul>
+      <div class="modal-actions"><button class="btn btn-primary" @click="closeNotice">確認しました</button></div>
+    </div>
+  </div>
+
+  <!-- 注意書きの一覧（画面上部の「ℹ」ボタンで開く）。テーマ（押印・日付・提出先・添付書類など）を選び、その下の「一般論」と「例外の書類」を選んで読む -->
+  <div v-if="tipsOpen" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="注意書き" @click.self="closeTips">
+    <div class="modal-box help-modal tips-modal">
+      <div class="modal-title">ℹ 注意書き</div>
+      <div class="tips-grid">
+        <div class="tips-col">
+          <div class="tips-col-title">テーマ</div>
+          <button type="button" v-for="(g, gi) in tipGenres" :key="gi" class="tips-pick" :class="{ on: gi === tipGenreIndex }" @click="selectTipGenre(gi)">{{ g.name }}</button>
+        </div>
+        <div class="tips-col">
+          <div class="tips-col-title">一般論と、例外の書類</div>
+          <button type="button" v-for="t in tipsCurrentGenre.tips" :key="t.key" class="tips-pick" :class="{ on: tipsCurrent && t.key === tipsCurrent.key }" @click="selectTip(t.key)">{{ t.title }}<span v-if="t.kind === 'general'" class="tips-state tips-tag-general">一般論</span><span v-else-if="t.kind === 'exception'" class="tips-state tips-tag-exception">例外</span></button>
+        </div>
+        <div class="tips-body" v-if="tipsCurrent">
+          <div class="tips-body-title">{{ tipsCurrent.title }}</div>
+          <ul class="modal-list"><li v-for="(it, i) in tipsCurrent.items" :key="i" v-html="it"></li></ul>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" @click="closeTips">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 被相続人の追加: 候補者（亡くなっている関係者）と、「それ以外」を選ぶ -->
+  <div v-if="caseAddOpen" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="追加する被相続人" @click.self="closeCaseAdd">
+    <div class="modal-box help-modal case-modal">
+      <div class="modal-title">追加する被相続人</div>
+      <div class="case-add-list">
+        <button type="button" v-for="(cd, i) in caseCandidates" :key="i" class="case-add-opt" @click="chooseCaseToAdd(i)">{{ cd.label }}</button>
+        <button type="button" class="case-add-opt case-add-other" @click="chooseCaseToAdd('__blank__')">それ以外</button>
+      </div>
+      <div class="modal-actions"><button class="btn btn-outline" @click="closeCaseAdd">閉じる</button></div>
+    </div>
+  </div>
+
+  <!-- 各タブの説明（「？」ボタンを押したときだけ表示） -->
+  <div v-if="helpOpen" class="modal-backdrop" role="dialog" aria-modal="true" :aria-label="'「' + currentHelp.title + '」の説明'" @click.self="closeHelp">
+    <div class="modal-box help-modal">
+      <div class="modal-title">「{{ currentHelp.title }}」タブの説明</div>
+      <ul class="modal-list">
+        <li v-for="(it, i) in currentHelp.items" :key="i" v-html="it"></li>
+      </ul>
+      <div class="help-flow">
+        <div class="help-flow-title">入力の順番</div>
+        <ol>
+          <li v-for="t in inputTabs" :key="t.id" :class="{ 'help-flow-now': t.id === activeInputTab }">{{ t.label }}<span v-if="t.id === activeInputTab">　← いま開いているタブ</span></li>
+        </ol>
+      </div>
+      <div class="modal-actions"><button class="btn btn-primary" @click="closeHelp">閉じる</button></div>
+    </div>
+  </div>
+
+  <!-- ホバー表示の注意書き（data-tip を付けた要素にカーソルを重ねると表示） -->
+  <div v-if="tip.visible && tipDef" class="hover-tip" :style="{ top: tip.top + 'px', left: tip.left + 'px' }"
+       role="tooltip" @mouseenter="onTipEnter" @mouseleave="onTipLeave">
+    <div class="hover-tip-head">
+      <strong>{{ tipDef.title }}</strong>
+      <button class="hover-tip-close" @click="closeTip" aria-label="閉じる">×</button>
+    </div>
+    <ul class="hover-tip-list">
+      <li v-for="(it, i) in tipDef.items" :key="i" v-html="it"></li>
+    </ul>
+  </div>
+</div>
+
+<!-- 利用者がバージョンを確認できるよう、最終改定日を表示する。運用ルール: zip化する日付を、そのつど入れる -->
+<footer class="app-footer">
+  <div class="app-footer-privacy">このプログラムは、お使いのブラウザ内のJavaScriptだけで動いています。入力した氏名・住所などの個人情報は、外部へ送信されません。保存は、お使いの機器へのファイル保存です。（画面を動かす部品Vueを読み込むときだけ、インターネットに接続します。）</div>
+  <div>法定相続情報一覧図作れるかもプログラム　最終改定日：<span id="app-revised">令和8年11月6日（2026年11月6日）</span></div>
+</footer>
+
+<!-- 分割したJSファイル。読み込み順は依存関係の順
+     （データ→描画エンジン→再帰コンポーネント→アプリ本体）-->
+<script src="js/sampleData.js"></script>
+<script src="js/diagramEngine.js"></script>
+<script src="js/substituteEditor.js"></script>
+<script src="js/offices.js"></script>
+<script src="js/postal.js"></script>
+<script src="js/postaltown.js"></script>
+<script src="js/addressTools.js"></script>
+<script src="js/ledger.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
